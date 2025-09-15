@@ -1,0 +1,219 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Member {
+  id        String   @id @default(cuid())
+  name      String
+  color     String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  billSplits              BillSplit[]
+  paymentAllocations      PaymentAllocation[]
+  payments                Payment[]
+  mortgageSplits          MortgageSplit[]
+  mortgagePayments        MortgagePayment[]
+  mortgagePaymentAllocations MortgagePaymentAllocation[]
+  recurringBillSplits     RecurringBillSplit[]
+
+  @@map("members")
+}
+
+model Bill {
+  id              String    @id @default(cuid())
+  name            String
+  amountCents     Int       @map("amount_cents")
+  dueDate         DateTime  @map("due_date")
+  recurringBillId String?   @map("recurring_bill_id")
+  period          String?
+  splitMode       String    @map("split_mode") // 'amount', 'percent', 'shares'
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  recurringBill   RecurringBill? @relation(fields: [recurringBillId], references: [id])
+  splits          BillSplit[]
+  payments        Payment[]
+
+  @@map("bills")
+}
+
+model BillSplit {
+  id        String   @id @default(cuid())
+  billId    String   @map("bill_id")
+  memberId  String   @map("member_id")
+  value     Int      // amount, percentage, or shares depending on splitMode
+  createdAt DateTime @default(now()) @map("created_at")
+
+  bill   Bill   @relation(fields: [billId], references: [id], onDelete: Cascade)
+  member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@map("bill_splits")
+}
+
+model Payment {
+  id              String    @id @default(cuid())
+  billId          String    @map("bill_id")
+  paidDate        DateTime  @map("paid_date")
+  amountCents     Int       @map("amount_cents")
+  method          String    // 'ach', 'card', 'cash', 'check', 'zelle', 'venmo', 'other'
+  payerMemberId   String?   @map("payer_member_id")
+  note            String?
+  receiptFilename String?   @map("receipt_filename")
+  receiptData     String?   @map("receipt_data") // Base64 encoded
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  bill        Bill                @relation(fields: [billId], references: [id], onDelete: Cascade)
+  payerMember Member?             @relation(fields: [payerMemberId], references: [id])
+  allocations PaymentAllocation[]
+
+  @@map("payments")
+}
+
+model PaymentAllocation {
+  id          String   @id @default(cuid())
+  paymentId   String   @map("payment_id")
+  memberId    String   @map("member_id")
+  amountCents Int      @map("amount_cents")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  member  Member  @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@map("payment_allocations")
+}
+
+model Mortgage {
+  id                     String    @id @default(cuid())
+  name                   String
+  lender                 String?
+  isPrimary              Boolean   @default(false) @map("is_primary")
+  originalPrincipalCents Int       @map("original_principal_cents")
+  currentPrincipalCents  Int       @map("current_principal_cents")
+  interestRateApy        Float     @map("interest_rate_apy")
+  termMonths             Int       @map("term_months")
+  startDate              DateTime  @map("start_date")
+  scheduledPaymentCents  Int       @map("scheduled_payment_cents")
+  paymentDay             Int       @map("payment_day")
+  escrowEnabled          Boolean   @map("escrow_enabled")
+  escrowTaxesCents       Int?      @map("escrow_taxes_cents")
+  escrowInsuranceCents   Int?      @map("escrow_insurance_cents")
+  escrowMipCents         Int?      @map("escrow_mip_cents")
+  escrowHoaCents         Int?      @map("escrow_hoa_cents")
+  notes                  String?
+  active                 Boolean   @default(true)
+  splitMode              String    @map("split_mode") // 'amount', 'percent', 'shares'
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+
+  splits             MortgageSplit[]
+  payments           MortgagePayment[]
+  paymentBreakdowns  MortgagePaymentBreakdown[]
+
+  @@map("mortgages")
+}
+
+model MortgageSplit {
+  id         String   @id @default(cuid())
+  mortgageId String   @map("mortgage_id")
+  memberId   String   @map("member_id")
+  value      Int      // amount, percentage, or shares depending on splitMode
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  mortgage Mortgage @relation(fields: [mortgageId], references: [id], onDelete: Cascade)
+  member   Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@map("mortgage_splits")
+}
+
+model MortgagePayment {
+  id              String    @id @default(cuid())
+  mortgageId      String    @map("mortgage_id")
+  paidDate        DateTime  @map("paid_date")
+  amountCents     Int       @map("amount_cents")
+  method          String    // 'ach', 'card', 'cash', 'check', 'zelle', 'venmo', 'other'
+  payerMemberId   String?   @map("payer_member_id")
+  note            String?
+  receiptFilename String?   @map("receipt_filename")
+  receiptData     String?   @map("receipt_data") // Base64 encoded
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  mortgage    Mortgage                        @relation(fields: [mortgageId], references: [id], onDelete: Cascade)
+  payerMember Member?                         @relation(fields: [payerMemberId], references: [id])
+  allocations MortgagePaymentAllocation[]
+  breakdown   MortgagePaymentBreakdown?
+
+  @@map("mortgage_payments")
+}
+
+model MortgagePaymentAllocation {
+  id            String   @id @default(cuid())
+  paymentId     String   @map("payment_id")
+  memberId      String   @map("member_id")
+  amountCents   Int      @map("amount_cents")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  payment MortgagePayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  member  Member          @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@map("mortgage_payment_allocations")
+}
+
+model MortgagePaymentBreakdown {
+  id             String   @id
+  paymentId      String   @unique @map("payment_id")
+  mortgageId     String   @map("mortgage_id")
+  principalCents Int      @map("principal_cents")
+  interestCents  Int      @map("interest_cents")
+  escrowCents    Int      @map("escrow_cents")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  payment  MortgagePayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  mortgage Mortgage        @relation(fields: [mortgageId], references: [id], onDelete: Cascade)
+
+  @@map("mortgage_payment_breakdowns")
+}
+
+model RecurringBill {
+  id                   String   @id @default(cuid())
+  name                 String
+  amountCents          Int      @map("amount_cents")
+  dayOfMonth           Int      @map("day_of_month")
+  frequency            String   // 'monthly', 'bi-monthly', 'quarterly', 'semi-annually', 'yearly'
+  lastGeneratedPeriod  String   @map("last_generated_period")
+  splitMode            String   @map("split_mode") // 'amount', 'percent', 'shares'
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  splits RecurringBillSplit[]
+  bills  Bill[]
+
+  @@map("recurring_bills")
+}
+
+model RecurringBillSplit {
+  id               String   @id @default(cuid())
+  recurringBillId  String   @map("recurring_bill_id")
+  memberId         String   @map("member_id")
+  value            Int      // amount, percentage, or shares depending on splitMode
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  recurringBill RecurringBill @relation(fields: [recurringBillId], references: [id], onDelete: Cascade)
+  member        Member        @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@map("recurring_bill_splits")
+}
+
+model Setting {
+  key       String   @id
+  value     String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
+}
