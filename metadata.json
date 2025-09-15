@@ -1,0 +1,5 @@
+{
+  "name": "Family Budget Tracker",
+  "description": "A modern and simple application to track family bills and split expenses between members. Easily add recurring bills, manage household members, and see a clear breakdown of who owes what.",
+  "requestFramePermissions": []
+}
