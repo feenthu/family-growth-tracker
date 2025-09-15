@@ -1,6 +1,7 @@
 import express from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
+import rateLimit from 'express-rate-limit'
 import { PrismaClient } from '@prisma/client'
 
 dotenv.config()
@@ -9,10 +10,34 @@ const app = express()
 const prisma = new PrismaClient()
 const PORT = process.env.PORT || 8080
 
+// Rate limiting
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: 'Too many API requests from this IP, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+})
+
+const staticLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 30, // Limit each IP to 30 static file requests per minute
+  message: 'Too many requests, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+})
+
 // Middleware
 app.use(cors())
 app.use(express.json({ limit: '10mb' }))
-app.use(express.static('dist'))
+
+// Apply rate limiting
+app.use('/api/', apiLimiter)
+app.use(express.static('dist', {
+  setHeaders: (res) => {
+    res.setHeader('Cache-Control', 'public, max-age=31536000') // 1 year cache
+  }
+}))
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -517,8 +542,8 @@ app.put('/api/settings/:key', async (req, res) => {
   }
 })
 
-// Fallback to serve the React app
-app.get('/*', (req, res) => {
+// Fallback to serve the React app (with rate limiting for static files)
+app.get('/*', staticLimiter, (req, res) => {
   res.sendFile('index.html', { root: 'dist' })
 })
 
