@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git stash:*)",
+      "Read(//Users/to920d/Documents/Projects/TSO/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
