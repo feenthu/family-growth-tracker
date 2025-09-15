@@ -1,0 +1,20 @@
+name: "Family Tracker CodeQL Config"
+
+disable-default-queries: false
+
+queries:
+  - uses: security-and-quality
+  - uses: security-extended
+
+paths-ignore:
+  - "node_modules"
+  - "dist"
+  - "coverage"
+  - "**/*.test.ts"
+  - "**/*.spec.ts"
+  - "**/*.d.ts"
+
+paths:
+  - "src"
+  - "prisma"
+  - "server.ts"
