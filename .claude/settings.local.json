@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npx prisma:*)",
+      "mcp__jason-tan-swe-railway-mcp__project_list",
+      "mcp__jason-tan-swe-railway-mcp__configure_api_token",
+      "mcp__jason-tan-swe-railway-mcp__list_service_variables",
+      "mcp__jason-tan-swe-railway-mcp__variable_set",
+      "WebFetch(domain:github.com)",
+      "Bash(npm run:*)",
+      "Bash(git init:*)",
+      "Bash(git remote add:*)",
+      "Bash(git fetch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git add:*)",
+      "Bash(git rm:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
