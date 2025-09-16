@@ -40,8 +40,25 @@ app.use(express.static('dist', {
 }))
 
 // Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() })
+app.get('/api/health', async (req, res) => {
+  try {
+    // Test database connection
+    const result = await query('SELECT 1 as test')
+    res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      database: 'connected',
+      test: result.rows[0]?.test
+    })
+  } catch (error) {
+    console.error('Health check database error:', error)
+    res.status(500).json({
+      status: 'error',
+      timestamp: new Date().toISOString(),
+      database: 'disconnected',
+      error: error.message
+    })
+  }
 })
 
 // Database connection check
@@ -127,51 +144,67 @@ app.delete('/api/members/:id', async (req, res) => {
 // Bills API
 app.get('/api/bills', async (req, res) => {
   try {
-    const result = await query(`
+    // First, get basic bill information
+    const billsResult = await query(`
       SELECT
-        b.id, b.name, b.amount_cents as "amountCents", b.due_date as "dueDate",
-        b.recurring_bill_id as "recurringBillId", b.period, b.split_mode as "splitMode",
-        b.created_at as "createdAt", b.updated_at as "updatedAt",
-        COALESCE(
-          json_agg(
-            DISTINCT jsonb_build_object(
-              'id', bs.id,
-              'memberId', bs.member_id,
-              'value', bs.value
-            )
-          ) FILTER (WHERE bs.id IS NOT NULL),
-          '[]'
-        ) as splits,
-        COALESCE(
-          json_agg(
-            DISTINCT jsonb_build_object(
-              'id', p.id,
-              'amountCents', p.amount_cents,
-              'payerId', p.payer_id,
-              'note', p.note,
-              'createdAt', p.created_at,
-              'updatedAt', p.updated_at,
-              'payerMember', jsonb_build_object('id', pm.id, 'name', pm.name, 'color', pm.color),
-              'allocations', COALESCE(pa.allocations, '[]'::json)
-            )
-          ) FILTER (WHERE p.id IS NOT NULL),
-          '[]'
-        ) as payments
-      FROM bills b
-      LEFT JOIN bill_splits bs ON b.id = bs.bill_id
-      LEFT JOIN payments p ON b.id = p.bill_id
-      LEFT JOIN members pm ON p.payer_id = pm.id
-      LEFT JOIN LATERAL (
-        SELECT json_agg(
-          jsonb_build_object('id', pa_inner.id, 'memberId', pa_inner.member_id, 'amountCents', pa_inner.amount_cents)
-        ) as allocations
-        FROM payment_allocations pa_inner
-        WHERE pa_inner.payment_id = p.id
-      ) pa ON true
-      GROUP BY b.id
-      ORDER BY b.due_date DESC
+        id, name, amount_cents as "amountCents", due_date as "dueDate",
+        recurring_bill_id as "recurringBillId", period, split_mode as "splitMode",
+        created_at as "createdAt", updated_at as "updatedAt"
+      FROM bills
+      ORDER BY due_date DESC
     `)
-    res.json(result.rows)
+
+    const bills = billsResult.rows
+
+    // For each bill, get splits and payments separately
+    for (const bill of bills) {
+      // Get splits
+      const splitsResult = await query(`
+        SELECT id, member_id as "memberId", value
+        FROM bill_splits
+        WHERE bill_id = $1
+      `, [bill.id])
+      bill.splits = splitsResult.rows
+
+      // Get payments with basic info
+      const paymentsResult = await query(`
+        SELECT
+          p.id, p.amount_cents as "amountCents", p.payer_id as "payerId",
+          p.note, p.created_at as "createdAt", p.updated_at as "updatedAt",
+          m.id as "payerMemberId", m.name as "payerMemberName", m.color as "payerMemberColor"
+        FROM payments p
+        LEFT JOIN members m ON p.payer_id = m.id
+        WHERE p.bill_id = $1
+        ORDER BY p.created_at DESC
+      `, [bill.id])
+
+      // Process payments and get allocations
+      bill.payments = []
+      for (const payment of paymentsResult.rows) {
+        const allocationsResult = await query(`
+          SELECT id, member_id as "memberId", amount_cents as "amountCents"
+          FROM payment_allocations
+          WHERE payment_id = $1
+        `, [payment.id])
+
+        bill.payments.push({
+          id: payment.id,
+          amountCents: payment.amountCents,
+          payerId: payment.payerId,
+          note: payment.note,
+          createdAt: payment.createdAt,
+          updatedAt: payment.updatedAt,
+          payerMember: payment.payerMemberId ? {
+            id: payment.payerMemberId,
+            name: payment.payerMemberName,
+            color: payment.payerMemberColor
+          } : null,
+          allocations: allocationsResult.rows
+        })
+      }
+    }
+
+    res.json(bills)
   } catch (error) {
     console.error('Bills fetch error:', error)
     res.status(500).json({ error: 'Failed to fetch bills' })
