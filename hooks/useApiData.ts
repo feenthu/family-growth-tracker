@@ -2,6 +2,12 @@ import { useState, useEffect, useCallback } from 'react'
 import { apiClient, ApiMember, ApiBill, ApiRecurringBill, ApiPayment, ApiMortgage, ApiMortgagePayment } from '../utils/api'
 import { Person, Bill, RecurringBill, Payment, Mortgage, MortgagePayment, MortgagePaymentBreakdown } from '../types'
 
+// Default data for empty database or offline scenarios
+const DEFAULT_PEOPLE: Person[] = [
+  { id: '1', name: 'Alex', color: 'bg-blue-500' },
+  { id: '2', name: 'Beth', color: 'bg-pink-500' },
+]
+
 // Type mapping utilities - Convert between frontend and API types
 
 // Person <-> ApiMember mapping
@@ -216,32 +222,38 @@ function apiMortgagePaymentToMortgagePayment(apiPayment: ApiMortgagePayment): Mo
   }
 }
 
-// Generic hook type
+// Generic hook type - changed error to warning to indicate non-blocking
 type ApiHookResult<T> = [T[], (data: T[]) => void, boolean, string | null]
 
-// Members hook
+// Members hook with fault tolerance
 export function useMembers(): ApiHookResult<Person> {
-  const [data, setData] = useState<Person[]>([])
+  const [data, setData] = useState<Person[]>(DEFAULT_PEOPLE)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [warning, setWarning] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
     try {
       setLoading(true)
       const apiMembers = await apiClient.getMembers()
-      setData(apiMembers.map(apiMemberToPerson))
-      setError(null)
+
+      // If API returns data, use it; otherwise keep defaults
+      if (apiMembers && apiMembers.length > 0) {
+        setData(apiMembers.map(apiMemberToPerson))
+        setWarning(null)
+      } else {
+        // Empty database - keep defaults but show info
+        setWarning('Using default family members. Add your own in the People section.')
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch members')
-      console.error('Error fetching members:', err)
+      // API failure - keep defaults and show warning
+      setWarning('Unable to connect to server. Working offline with default data.')
+      console.warn('API fetch failed, using defaults:', err)
     } finally {
       setLoading(false)
     }
   }, [])
 
   const updateData = useCallback(async (newData: Person[]) => {
-    // This is a simplified implementation - in reality you'd want to
-    // track individual operations (create/update/delete) for better error handling
     setData(newData)
   }, [])
 
@@ -249,24 +261,24 @@ export function useMembers(): ApiHookResult<Person> {
     fetchData()
   }, [fetchData])
 
-  return [data, updateData, loading, error]
+  return [data, updateData, loading, warning]
 }
 
-// Bills hook
+// Bills hook with fault tolerance
 export function useBills(): ApiHookResult<Bill> {
   const [data, setData] = useState<Bill[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [warning, setWarning] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
     try {
       setLoading(true)
       const apiBills = await apiClient.getBills()
       setData(apiBills.map(apiBillToBill))
-      setError(null)
+      setWarning(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch bills')
-      console.error('Error fetching bills:', err)
+      setWarning('Unable to load bills from server. You can still add new bills.')
+      console.warn('Bills fetch failed:', err)
     } finally {
       setLoading(false)
     }
@@ -280,24 +292,24 @@ export function useBills(): ApiHookResult<Bill> {
     fetchData()
   }, [fetchData])
 
-  return [data, updateData, loading, error]
+  return [data, updateData, loading, warning]
 }
 
-// Recurring Bills hook
+// Recurring Bills hook with fault tolerance
 export function useRecurringBills(): ApiHookResult<RecurringBill> {
   const [data, setData] = useState<RecurringBill[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [warning, setWarning] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
     try {
       setLoading(true)
       const apiRBs = await apiClient.getRecurringBills()
       setData(apiRBs.map(apiRecurringBillToRecurringBill))
-      setError(null)
+      setWarning(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch recurring bills')
-      console.error('Error fetching recurring bills:', err)
+      setWarning('Unable to load recurring bills from server. You can still create new ones.')
+      console.warn('Recurring bills fetch failed:', err)
     } finally {
       setLoading(false)
     }
@@ -311,14 +323,14 @@ export function useRecurringBills(): ApiHookResult<RecurringBill> {
     fetchData()
   }, [fetchData])
 
-  return [data, updateData, loading, error]
+  return [data, updateData, loading, warning]
 }
 
-// Payments hook (derived from bills for now, but could be separate endpoint)
+// Payments hook with fault tolerance
 export function usePayments(): ApiHookResult<Payment> {
   const [data, setData] = useState<Payment[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [warning, setWarning] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
     try {
@@ -332,10 +344,10 @@ export function usePayments(): ApiHookResult<Payment> {
         }
       })
       setData(allPayments)
-      setError(null)
+      setWarning(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch payments')
-      console.error('Error fetching payments:', err)
+      setWarning('Unable to load payments from server. You can still record new payments.')
+      console.warn('Payments fetch failed:', err)
     } finally {
       setLoading(false)
     }
@@ -349,24 +361,24 @@ export function usePayments(): ApiHookResult<Payment> {
     fetchData()
   }, [fetchData])
 
-  return [data, updateData, loading, error]
+  return [data, updateData, loading, warning]
 }
 
-// Mortgages hook
+// Mortgages hook with fault tolerance
 export function useMortgages(): ApiHookResult<Mortgage> {
   const [data, setData] = useState<Mortgage[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [warning, setWarning] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
     try {
       setLoading(true)
       const apiMortgages = await apiClient.getMortgages()
       setData(apiMortgages.map(apiMortgageToMortgage))
-      setError(null)
+      setWarning(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch mortgages')
-      console.error('Error fetching mortgages:', err)
+      setWarning('Unable to load mortgages from server. You can still add new mortgages.')
+      console.warn('Mortgages fetch failed:', err)
     } finally {
       setLoading(false)
     }
@@ -380,14 +392,14 @@ export function useMortgages(): ApiHookResult<Mortgage> {
     fetchData()
   }, [fetchData])
 
-  return [data, updateData, loading, error]
+  return [data, updateData, loading, warning]
 }
 
-// Mortgage Payments hook
+// Mortgage Payments hook with fault tolerance
 export function useMortgagePayments(): ApiHookResult<MortgagePayment> {
   const [data, setData] = useState<MortgagePayment[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [warning, setWarning] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
     try {
@@ -401,10 +413,10 @@ export function useMortgagePayments(): ApiHookResult<MortgagePayment> {
         }
       })
       setData(allPayments)
-      setError(null)
+      setWarning(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch mortgage payments')
-      console.error('Error fetching mortgage payments:', err)
+      setWarning('Unable to load mortgage payments from server. You can still record new payments.')
+      console.warn('Mortgage payments fetch failed:', err)
     } finally {
       setLoading(false)
     }
@@ -418,14 +430,14 @@ export function useMortgagePayments(): ApiHookResult<MortgagePayment> {
     fetchData()
   }, [fetchData])
 
-  return [data, updateData, loading, error]
+  return [data, updateData, loading, warning]
 }
 
-// Mortgage Payment Breakdowns hook (placeholder - this data comes with mortgage payments)
+// Mortgage Payment Breakdowns hook with fault tolerance
 export function useMortgagePaymentBreakdowns(): ApiHookResult<MortgagePaymentBreakdown> {
   const [data, setData] = useState<MortgagePaymentBreakdown[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [warning, setWarning] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
     try {
@@ -450,10 +462,10 @@ export function useMortgagePaymentBreakdowns(): ApiHookResult<MortgagePaymentBre
         }
       })
       setData(allBreakdowns)
-      setError(null)
+      setWarning(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch mortgage payment breakdowns')
-      console.error('Error fetching mortgage payment breakdowns:', err)
+      setWarning('Unable to load payment breakdowns from server.')
+      console.warn('Mortgage payment breakdowns fetch failed:', err)
     } finally {
       setLoading(false)
     }
@@ -467,7 +479,7 @@ export function useMortgagePaymentBreakdowns(): ApiHookResult<MortgagePaymentBre
     fetchData()
   }, [fetchData])
 
-  return [data, updateData, loading, error]
+  return [data, updateData, loading, warning]
 }
 
 // Utility functions for individual operations
