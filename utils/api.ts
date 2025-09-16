@@ -1,4 +1,5 @@
-const API_BASE = process.env.NODE_ENV === 'production'
+// In browser context, we need to detect environment differently
+const API_BASE = typeof window !== 'undefined' && window.location.hostname !== 'localhost'
   ? 'https://family-growth-tracker-production.up.railway.app'
   : 'http://localhost:8080'
 

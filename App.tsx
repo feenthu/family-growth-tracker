@@ -9,24 +9,26 @@ import { PeopleManager } from './components/PeopleManager';
 import { RecurringBillManager } from './components/RecurringBillManager';
 import { LoadingSpinner } from './components/LoadingSpinner';
 import { ErrorMessage } from './components/ErrorMessage';
+import { WarningBanner } from './components/WarningBanner';
 import { calculateSplitAmounts, calculatePaymentBreakdown, resolveItemCycle } from './utils/calculations';
 import { FamilyView } from './components/FamilyView';
 import { MortgageManager } from './components/MortgageManager';
 import { PasswordModal } from './components/PasswordModal';
 
 const App: React.FC = () => {
-  const [people, setPeople, peopleLoading, peopleError] = useMembers();
-  const [bills, setBills, billsLoading, billsError] = useBills();
-  const [recurringBills, setRecurringBills, recurringBillsLoading, recurringBillsError] = useRecurringBills();
-  const [payments, setPayments, paymentsLoading, paymentsError] = usePayments();
-  const [mortgages, setMortgages, mortgagesLoading, mortgagesError] = useMortgages();
-  const [mortgagePayments, setMortgagePayments, mortgagePaymentsLoading, mortgagePaymentsError] = useMortgagePayments();
-  const [mortgagePaymentBreakdowns, setMortgagePaymentBreakdowns, breakdownsLoading, breakdownsError] = useMortgagePaymentBreakdowns();
+  const [people, setPeople, peopleLoading, peopleWarning] = useMembers();
+  const [bills, setBills, billsLoading, billsWarning] = useBills();
+  const [recurringBills, setRecurringBills, recurringBillsLoading, recurringBillsWarning] = useRecurringBills();
+  const [payments, setPayments, paymentsLoading, paymentsWarning] = usePayments();
+  const [mortgages, setMortgages, mortgagesLoading, mortgagesWarning] = useMortgages();
+  const [mortgagePayments, setMortgagePayments, mortgagePaymentsLoading, mortgagePaymentsWarning] = useMortgagePayments();
+  const [mortgagePaymentBreakdowns, setMortgagePaymentBreakdowns, breakdownsLoading, breakdownsWarning] = useMortgagePaymentBreakdowns();
 
-  // Compute loading and error states
+  // Compute loading state (no blocking errors anymore)
   const isLoading = peopleLoading || billsLoading || recurringBillsLoading || paymentsLoading || mortgagesLoading || mortgagePaymentsLoading || breakdownsLoading;
-  const hasError = peopleError || billsError || recurringBillsError || paymentsError || mortgagesError || mortgagePaymentsError || breakdownsError;
-  const errorMessage = peopleError || billsError || recurringBillsError || paymentsError || mortgagesError || mortgagePaymentsError || breakdownsError;
+
+  // Collect warnings for non-blocking notification
+  const warnings = [peopleWarning, billsWarning, recurringBillsWarning, paymentsWarning, mortgagesWarning, mortgagePaymentsWarning, breakdownsWarning].filter(Boolean);
   
   // Default view is 'family'. 'manage' is a protected state.
   const [view, setView] = useState<'manage' | 'family'>('family');
@@ -364,18 +366,13 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* Error State */}
-        {!isLoading && hasError && (
-          <div className="max-w-2xl mx-auto mt-8">
-            <ErrorMessage
-              message={errorMessage || 'Failed to load budget data. Please check your connection and try again.'}
-              onRetry={() => window.location.reload()}
-            />
-          </div>
+        {/* Non-blocking Warnings */}
+        {!isLoading && warnings.length > 0 && (
+          <WarningBanner warnings={warnings} />
         )}
 
-        {/* Main Content */}
-        {!isLoading && !hasError && (
+        {/* Main Content - Always show when not loading */}
+        {!isLoading && (
           view === 'manage' ? (
           <>
             <Summary totalMonthly={totals.totalMonthly} perPersonTotals={totals.perPersonTotals} />
