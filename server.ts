@@ -656,12 +656,25 @@ app.post('/api/mortgages', async (req, res) => {
   try {
     await client.query('BEGIN')
 
+    // Debug logging to see what we're receiving
+    console.log('=== MORTGAGE CREATE DEBUG ===')
+    console.log('Full request body:', JSON.stringify(req.body, null, 2))
+    console.log('=============================')
+
     const {
       name, lender, is_primary, original_principal, current_principal,
       interest_rate_apy, term_months, start_date, scheduled_payment,
       payment_day, escrow_enabled, escrow_taxes, escrow_insurance,
       escrow_mip, escrow_hoa, notes, active, splitMode, splits
     } = req.body
+
+    // Debug the extracted values
+    console.log('Extracted values:')
+    console.log('name:', name)
+    console.log('original_principal:', original_principal)
+    console.log('current_principal:', current_principal)
+    console.log('scheduled_payment:', scheduled_payment)
+    console.log('active:', active)
 
     // Insert mortgage
     const mortgageResult = await client.query(`
