@@ -229,17 +229,21 @@ app.post('/api/bills', async (req, res) => {
       const bill = billResult.rows[0]
 
       if (splits && splits.length > 0) {
-        // Insert splits one by one to avoid parameter binding issues
-        const insertedSplits = []
-        for (const split of splits) {
-          const splitResult = await client.query(`
-            INSERT INTO bill_splits (bill_id, member_id, value)
-            VALUES ($1, $2, $3)
-            RETURNING id, member_id as "memberId", value
-          `, [bill.id, split.memberId, split.value])
-          insertedSplits.push(splitResult.rows[0])
-        }
-        bill.splits = insertedSplits
+        const splitValues = splits.map((_, i) => `($1, $${i*2+2}, $${i*2+3})`).join(', ')
+        const splitParams = [bill.id, ...splits.flatMap(s => [s.memberId, s.value])]
+
+        await client.query(`
+          INSERT INTO bill_splits (bill_id, member_id, value)
+          VALUES ${splitValues}
+        `, splitParams)
+
+        // Fetch the splits we just created
+        const splitsResult = await client.query(`
+          SELECT id, member_id as "memberId", value
+          FROM bill_splits WHERE bill_id = $1
+        `, [bill.id])
+
+        bill.splits = splitsResult.rows
       } else {
         bill.splits = []
       }
@@ -286,17 +290,21 @@ app.put('/api/bills/:id', async (req, res) => {
 
       // Insert new splits
       if (splits && splits.length > 0) {
-        // Insert splits one by one to avoid parameter binding issues
-        const insertedSplits = []
-        for (const split of splits) {
-          const splitResult = await client.query(`
-            INSERT INTO bill_splits (bill_id, member_id, value)
-            VALUES ($1, $2, $3)
-            RETURNING id, member_id as "memberId", value
-          `, [bill.id, split.memberId, split.value])
-          insertedSplits.push(splitResult.rows[0])
-        }
-        bill.splits = insertedSplits
+        const splitValues = splits.map((_, i) => `($1, $${i*2+2}, $${i*2+3})`).join(', ')
+        const splitParams = [bill.id, ...splits.flatMap(s => [s.memberId, s.value])]
+
+        await client.query(`
+          INSERT INTO bill_splits (bill_id, member_id, value)
+          VALUES ${splitValues}
+        `, splitParams)
+
+        // Fetch the splits we just created
+        const splitsResult = await client.query(`
+          SELECT id, member_id as "memberId", value
+          FROM bill_splits WHERE bill_id = $1
+        `, [bill.id])
+
+        bill.splits = splitsResult.rows
       } else {
         bill.splits = []
       }
@@ -345,17 +353,21 @@ app.post('/api/payments', async (req, res) => {
 
       // Insert allocations
       if (allocations && allocations.length > 0) {
-        // Insert allocations one by one to avoid parameter binding issues
-        const insertedAllocations = []
-        for (const allocation of allocations) {
-          const allocResult = await client.query(`
-            INSERT INTO payment_allocations (payment_id, member_id, amount_cents)
-            VALUES ($1, $2, $3)
-            RETURNING id, member_id as "memberId", amount_cents as "amountCents"
-          `, [payment.id, allocation.memberId, allocation.amountCents])
-          insertedAllocations.push(allocResult.rows[0])
-        }
-        payment.allocations = insertedAllocations
+        const allocValues = allocations.map((_, i) => `($1, $${i*2+2}, $${i*2+3})`).join(', ')
+        const allocParams = [payment.id, ...allocations.flatMap(a => [a.memberId, a.amountCents])]
+
+        await client.query(`
+          INSERT INTO payment_allocations (payment_id, member_id, amount_cents)
+          VALUES ${allocValues}
+        `, allocParams)
+
+        // Fetch the allocations we just created
+        const allocResult = await client.query(`
+          SELECT id, member_id as "memberId", amount_cents as "amountCents"
+          FROM payment_allocations WHERE payment_id = $1
+        `, [payment.id])
+
+        payment.allocations = allocResult.rows
       } else {
         payment.allocations = []
       }
@@ -412,17 +424,21 @@ app.put('/api/payments/:id', async (req, res) => {
 
       // Insert new allocations
       if (allocations && allocations.length > 0) {
-        // Insert allocations one by one to avoid parameter binding issues
-        const insertedAllocations = []
-        for (const allocation of allocations) {
-          const allocResult = await client.query(`
-            INSERT INTO payment_allocations (payment_id, member_id, amount_cents)
-            VALUES ($1, $2, $3)
-            RETURNING id, member_id as "memberId", amount_cents as "amountCents"
-          `, [payment.id, allocation.memberId, allocation.amountCents])
-          insertedAllocations.push(allocResult.rows[0])
-        }
-        payment.allocations = insertedAllocations
+        const allocValues = allocations.map((_, i) => `($1, $${i*2+2}, $${i*2+3})`).join(', ')
+        const allocParams = [payment.id, ...allocations.flatMap(a => [a.memberId, a.amountCents])]
+
+        await client.query(`
+          INSERT INTO payment_allocations (payment_id, member_id, amount_cents)
+          VALUES ${allocValues}
+        `, allocParams)
+
+        // Fetch the allocations we just created
+        const allocResult = await client.query(`
+          SELECT id, member_id as "memberId", amount_cents as "amountCents"
+          FROM payment_allocations WHERE payment_id = $1
+        `, [payment.id])
+
+        payment.allocations = allocResult.rows
       } else {
         payment.allocations = []
       }
@@ -509,17 +525,19 @@ app.post('/api/recurring-bills', async (req, res) => {
       const recurringBill = billResult.rows[0]
 
       if (splits && splits.length > 0) {
-        // Insert splits one by one to avoid parameter binding issues
-        const insertedSplits = []
-        for (const split of splits) {
-          const splitResult = await client.query(`
-            INSERT INTO recurring_bill_splits (recurring_bill_id, member_id, value)
-            VALUES ($1, $2, $3)
-            RETURNING id, member_id as "memberId", value
-          `, [recurringBill.id, split.memberId, split.value])
-          insertedSplits.push(splitResult.rows[0])
-        }
-        recurringBill.splits = insertedSplits
+        const splitValues = splits.map((_, i) => `($1, $${i*2+2}, $${i*2+3})`).join(', ')
+        const splitParams = [recurringBill.id, ...splits.flatMap(s => [s.memberId, s.value])]
+
+        await client.query(`
+          INSERT INTO recurring_bill_splits (recurring_bill_id, member_id, value)
+          VALUES ${splitValues}
+        `, splitParams)
+
+        const splitsResult = await client.query(`
+          SELECT id, member_id as "memberId", value
+          FROM recurring_bill_splits WHERE recurring_bill_id = $1
+        `, [recurringBill.id])
+        recurringBill.splits = splitsResult.rows
       } else {
         recurringBill.splits = []
       }
@@ -564,17 +582,19 @@ app.put('/api/recurring-bills/:id', async (req, res) => {
       await client.query('DELETE FROM recurring_bill_splits WHERE recurring_bill_id = $1', [req.params.id])
 
       if (splits && splits.length > 0) {
-        // Insert splits one by one to avoid parameter binding issues
-        const insertedSplits = []
-        for (const split of splits) {
-          const splitResult = await client.query(`
-            INSERT INTO recurring_bill_splits (recurring_bill_id, member_id, value)
-            VALUES ($1, $2, $3)
-            RETURNING id, member_id as "memberId", value
-          `, [recurringBill.id, split.memberId, split.value])
-          insertedSplits.push(splitResult.rows[0])
-        }
-        recurringBill.splits = insertedSplits
+        const splitValues = splits.map((_, i) => `($1, $${i*2+2}, $${i*2+3})`).join(', ')
+        const splitParams = [recurringBill.id, ...splits.flatMap(s => [s.memberId, s.value])]
+
+        await client.query(`
+          INSERT INTO recurring_bill_splits (recurring_bill_id, member_id, value)
+          VALUES ${splitValues}
+        `, splitParams)
+
+        const splitsResult = await client.query(`
+          SELECT id, member_id as "memberId", value
+          FROM recurring_bill_splits WHERE recurring_bill_id = $1
+        `, [recurringBill.id])
+        recurringBill.splits = splitsResult.rows
       } else {
         recurringBill.splits = []
       }
