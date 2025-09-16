@@ -51,8 +51,11 @@ const App: React.FC = () => {
       .filter(rb => rb.frequency === 'monthly')
       .reduce((sum, rb) => sum + rb.amount, 0);
 
+    // Calculate the total from regular bills (one-time bills)
+    const regularBillsTotal = bills.reduce((sum, bill) => sum + bill.amount, 0);
+
     // The main total is the sum of these planned amounts.
-    const totalMonthly = mortgagesTotal + monthlyRecurringBillsTotal;
+    const totalMonthly = mortgagesTotal + monthlyRecurringBillsTotal + regularBillsTotal;
 
     // The "Split Totals" are calculated separately based on the same set of items.
     const perPersonTotals: { [key: string]: number } = {};
@@ -78,7 +81,18 @@ const App: React.FC = () => {
       .filter(rb => rb.frequency === 'monthly')
       .forEach(bill => {
         const calculatedSplits = calculateSplitAmounts(bill, people);
-        
+
+        calculatedSplits.forEach(split => {
+            if (perPersonTotals[split.personId] !== undefined) {
+                perPersonTotals[split.personId] += split.amount;
+            }
+        });
+    });
+
+    // Process splits for regular bills (one-time bills).
+    bills.forEach(bill => {
+        const calculatedSplits = calculateSplitAmounts(bill, people);
+
         calculatedSplits.forEach(split => {
             if (perPersonTotals[split.personId] !== undefined) {
                 perPersonTotals[split.personId] += split.amount;
@@ -92,7 +106,7 @@ const App: React.FC = () => {
     }));
 
     return { totalMonthly, perPersonTotals: finalPerPersonTotals };
-  }, [people, mortgages, recurringBills]);
+  }, [people, mortgages, recurringBills, bills]);
 
   const handleViewChangeRequest = (newView: 'manage' | 'family') => {
     if (newView === 'family') {
