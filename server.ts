@@ -10,13 +10,14 @@ dotenv.config()
 const app = express()
 const PORT = process.env.PORT || 8080
 
-// Rate limiting
+// Rate limiting - configured for Railway reverse proxy
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // Limit each IP to 100 requests per windowMs
   message: 'Too many API requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
+  // Trust proxy is handled by app.set('trust proxy', true) below
 })
 
 const staticLimiter = rateLimit({
@@ -25,14 +26,15 @@ const staticLimiter = rateLimit({
   message: 'Too many requests, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
+  // Trust proxy is handled by app.set('trust proxy', true) below
 })
 
 // Middleware
 app.use(cors())
 app.use(express.json({ limit: '10mb' }))
 
-// Trust proxy for Railway deployment
-app.set('trust proxy', true)
+// Trust proxy for Railway deployment - be more specific to avoid rate limiting warnings
+app.set('trust proxy', 1) // Trust first proxy (Railway)
 
 // Apply rate limiting
 app.use('/api/', apiLimiter)
@@ -173,7 +175,7 @@ app.get('/api/bills', async (req, res) => {
       const paymentsResult = await query(`
         SELECT
           p.id, p.amount_cents as "amountCents", p.payer_member_id as "payerId",
-          p.note, p.created_at as "createdAt", p.updated_at as "updatedAt",
+          p.note, p.created_at as "createdAt",
           m.id as "payerMemberId", m.name as "payerMemberName", m.color as "payerMemberColor"
         FROM payments p
         LEFT JOIN members m ON p.payer_member_id = m.id
