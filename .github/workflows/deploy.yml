@@ -50,13 +50,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Generate Prisma client
-        run: npm run prisma:generate
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/family_tracker_test
-
-      - name: Run database migrations
-        run: npm run db:deploy
+      - name: Initialize database schema
+        run: npx tsx -e "
+          import('./db/init.ts').then(m => m.initializeDatabase()).then(() => {
+            console.log('✅ Database initialized successfully');
+            process.exit(0);
+          }).catch(err => {
+            console.error('❌ Database initialization failed:', err);
+            process.exit(1);
+          })
+        "
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/family_tracker_test
 
@@ -101,8 +104,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Generate Prisma client
-        run: npm run prisma:generate
+      # Database schema is now handled by direct SQL initialization
 
       - name: Build application
         run: npm run build
@@ -114,7 +116,7 @@ jobs:
           path: |
             dist/
             server.ts
-            prisma/
+            db/
             package.json
 
   security-scan:
@@ -173,18 +175,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Generate Prisma client
-        run: npm run prisma:generate
+      # Database schema is now handled by direct SQL initialization
 
       - name: Build application
         run: npm run build
 
       - name: Deploy to Railway
-        uses: railwayapp/railway-deploy@v3
+        uses: bervProject/railway-deploy@v1.4.0
         with:
           railway_token: ${{ secrets.RAILWAY_TOKEN }}
           service: ${{ secrets.RAILWAY_SERVICE_ID }}
-          detach: true
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           NODE_ENV: production
