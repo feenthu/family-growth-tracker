@@ -44,6 +44,48 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
 })
 
+// Database connection check
+app.get('/api/debug', async (req, res) => {
+  try {
+    // Check if DATABASE_URL exists
+    const hasDatabaseUrl = !!process.env.DATABASE_URL
+
+    // Try to connect to database
+    await prisma.$connect()
+
+    // Try a simple query
+    const memberCount = await prisma.member.count()
+
+    res.json({
+      status: 'ok',
+      database: {
+        connected: true,
+        hasDatabaseUrl,
+        memberCount,
+        databaseUrl: process.env.DATABASE_URL ? 'SET' : 'MISSING'
+      },
+      env: {
+        nodeEnv: process.env.NODE_ENV,
+        port: process.env.PORT
+      }
+    })
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      database: {
+        connected: false,
+        hasDatabaseUrl: !!process.env.DATABASE_URL,
+        databaseUrl: process.env.DATABASE_URL ? 'SET' : 'MISSING'
+      },
+      error: error instanceof Error ? error.message : 'Unknown error',
+      env: {
+        nodeEnv: process.env.NODE_ENV,
+        port: process.env.PORT
+      }
+    })
+  }
+})
+
 // Members API
 app.get('/api/members', async (req, res) => {
   try {
