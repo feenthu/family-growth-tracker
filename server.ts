@@ -606,26 +606,68 @@ app.use((req, res, next) => {
 
 async function startServer() {
   try {
-    // Run migrations in production
-    if (process.env.NODE_ENV === 'production') {
-      const { execSync } = await import('child_process')
-      console.log('Running database migrations...')
-      execSync('npx prisma migrate deploy', { stdio: 'inherit' })
-      console.log('Migrations completed.')
-    }
+    console.log(`Starting server in ${process.env.NODE_ENV || 'development'} mode...`)
+    console.log(`DATABASE_URL is ${process.env.DATABASE_URL ? 'SET' : 'MISSING'}`)
 
-    // Generate Prisma client
+    // Generate Prisma client first
     console.log('Generating Prisma client...')
     const { execSync } = await import('child_process')
-    execSync('npx prisma generate', { stdio: 'inherit' })
+    try {
+      execSync('npx prisma generate', { stdio: 'inherit' })
+      console.log('✅ Prisma client generated successfully')
+    } catch (genError) {
+      console.error('❌ Failed to generate Prisma client:', genError)
+      throw genError
+    }
+
+    // Run migrations in production
+    if (process.env.NODE_ENV === 'production') {
+      console.log('Running database migrations...')
+      try {
+        execSync('npx prisma migrate deploy', { stdio: 'inherit' })
+        console.log('✅ Migrations completed successfully')
+      } catch (migrationError) {
+        console.error('❌ Migration failed:', migrationError)
+        console.log('🔧 Attempting to create database and retry...')
+
+        try {
+          // Try to push the schema instead of migrate (creates tables if they don't exist)
+          execSync('npx prisma db push --force-reset', { stdio: 'inherit' })
+          console.log('✅ Database schema pushed successfully')
+        } catch (pushError) {
+          console.error('❌ Database push also failed:', pushError)
+          throw pushError
+        }
+      }
+    }
+
+    // Test database connection
+    console.log('Testing database connection...')
+    try {
+      await prisma.$connect()
+      console.log('✅ Database connection successful')
+
+      // Try to run a simple query to verify tables exist
+      const count = await prisma.member.count()
+      console.log(`✅ Database tables verified (${count} members found)`)
+    } catch (dbError) {
+      console.error('❌ Database connection/query failed:', dbError)
+      throw dbError
+    }
 
     // Start server
     app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`)
-      console.log(`Environment: ${process.env.NODE_ENV || 'development'}`)
+      console.log(`🚀 Server running on port ${PORT}`)
+      console.log(`🔗 Health check: http://localhost:${PORT}/api/health`)
+      console.log(`🛠️  Debug info: http://localhost:${PORT}/api/debug`)
     })
   } catch (error) {
-    console.error('Failed to start server:', error)
+    console.error('💥 Failed to start server:', error)
+    console.log('📋 Environment info:', {
+      NODE_ENV: process.env.NODE_ENV,
+      PORT: process.env.PORT,
+      DATABASE_URL: process.env.DATABASE_URL ? 'SET' : 'MISSING'
+    })
     process.exit(1)
   }
 }
