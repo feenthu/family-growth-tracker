@@ -657,10 +657,10 @@ app.post('/api/mortgages', async (req, res) => {
     await client.query('BEGIN')
 
     const {
-      name, lender, isPrimary, originalPrincipal, currentPrincipal,
-      interestRateApy, termMonths, startDate, scheduledPayment,
-      paymentDay, escrowEnabled, escrowTaxes, escrowInsurance,
-      escrowMip, escrowHoa, notes, active, splitMode, splits
+      name, lender, is_primary, original_principal, current_principal,
+      interest_rate_apy, term_months, start_date, scheduled_payment,
+      payment_day, escrow_enabled, escrow_taxes, escrow_insurance,
+      escrow_mip, escrow_hoa, notes, active, splitMode, splits
     } = req.body
 
     // Insert mortgage
@@ -680,10 +680,10 @@ app.post('/api/mortgages', async (req, res) => {
                escrow_mip_cents as "escrowMip", escrow_hoa_cents as "escrowHoa",
                notes, active, split_mode as "splitMode",
                created_at as "createdAt", updated_at as "updatedAt"
-    `, [name, lender, isPrimary, originalPrincipal, currentPrincipal,
-        interestRateApy, termMonths, startDate, scheduledPayment,
-        paymentDay, escrowEnabled, escrowTaxes, escrowInsurance,
-        escrowMip, escrowHoa, notes, active, splitMode])
+    `, [name, lender, is_primary, original_principal, current_principal,
+        interest_rate_apy, term_months, start_date, scheduled_payment,
+        payment_day, escrow_enabled, escrow_taxes, escrow_insurance,
+        escrow_mip, escrow_hoa, notes, active, splitMode])
 
     const mortgage = mortgageResult.rows[0]
 
@@ -723,10 +723,10 @@ app.put('/api/mortgages/:id', async (req, res) => {
     await client.query('BEGIN')
 
     const {
-      name, lender, isPrimary, originalPrincipal, currentPrincipal,
-      interestRateApy, termMonths, startDate, scheduledPayment,
-      paymentDay, escrowEnabled, escrowTaxes, escrowInsurance,
-      escrowMip, escrowHoa, notes, active, splitMode, splits
+      name, lender, is_primary, original_principal, current_principal,
+      interest_rate_apy, term_months, start_date, scheduled_payment,
+      payment_day, escrow_enabled, escrow_taxes, escrow_insurance,
+      escrow_mip, escrow_hoa, notes, active, splitMode, splits
     } = req.body
 
     // Update mortgage
@@ -748,10 +748,10 @@ app.put('/api/mortgages/:id', async (req, res) => {
                escrow_mip_cents as "escrowMip", escrow_hoa_cents as "escrowHoa",
                notes, active, split_mode as "splitMode",
                created_at as "createdAt", updated_at as "updatedAt"
-    `, [req.params.id, name, lender, isPrimary, originalPrincipal, currentPrincipal,
-        interestRateApy, termMonths, startDate, scheduledPayment,
-        paymentDay, escrowEnabled, escrowTaxes, escrowInsurance,
-        escrowMip, escrowHoa, notes, active, splitMode])
+    `, [req.params.id, name, lender, is_primary, original_principal, current_principal,
+        interest_rate_apy, term_months, start_date, scheduled_payment,
+        payment_day, escrow_enabled, escrow_taxes, escrow_insurance,
+        escrow_mip, escrow_hoa, notes, active, splitMode])
 
     const mortgage = mortgageResult.rows[0]
 
