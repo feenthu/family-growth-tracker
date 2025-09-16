@@ -608,42 +608,198 @@ app.delete('/api/recurring-bills/:id', async (req, res) => {
   }
 })
 
-// Mortgages API (TODO: Convert to direct SQL)
+// Mortgages API
 app.get('/api/mortgages', async (req, res) => {
   try {
-    // TODO: Implement direct SQL query for mortgages
+    // Get all mortgages with splits
+    const mortgagesResult = await query(`
+      SELECT
+        id, name, lender, is_primary as "isPrimary",
+        original_principal_cents as "originalPrincipal", current_principal_cents as "currentPrincipal",
+        interest_rate_apy as "interestRateApy", term_months as "termMonths",
+        start_date as "startDate", scheduled_payment_cents as "scheduledPayment",
+        payment_day as "paymentDay", escrow_enabled as "escrowEnabled",
+        escrow_taxes_cents as "escrowTaxes", escrow_insurance_cents as "escrowInsurance",
+        escrow_mip_cents as "escrowMip", escrow_hoa_cents as "escrowHoa",
+        notes, active, split_mode as "splitMode",
+        created_at as "createdAt", updated_at as "updatedAt"
+      FROM mortgages
+      ORDER BY created_at DESC
+    `)
+
+    // Get splits for each mortgage
     const mortgages = []
+    for (const mortgage of mortgagesResult.rows) {
+      const splitsResult = await query(`
+        SELECT id, member_id as "memberId", value
+        FROM mortgage_splits
+        WHERE mortgage_id = $1
+      `, [mortgage.id])
+
+      mortgage.splits = splitsResult.rows.map(split => ({
+        personId: split.memberId,
+        value: split.value
+      }))
+
+      mortgages.push(mortgage)
+    }
+
     res.json(mortgages)
   } catch (error) {
+    console.error('Error fetching mortgages:', error)
     res.status(500).json({ error: 'Failed to fetch mortgages' })
   }
 })
 
 app.post('/api/mortgages', async (req, res) => {
+  const client = await pool.connect()
   try {
-    // TODO: Implement direct SQL query for mortgage creation
-    const mortgage = { id: 'temp-id', ...req.body, splits: [] }
+    await client.query('BEGIN')
+
+    const {
+      name, lender, isPrimary, originalPrincipal, currentPrincipal,
+      interestRateApy, termMonths, startDate, scheduledPayment,
+      paymentDay, escrowEnabled, escrowTaxes, escrowInsurance,
+      escrowMip, escrowHoa, notes, active, splitMode, splits
+    } = req.body
+
+    // Insert mortgage
+    const mortgageResult = await client.query(`
+      INSERT INTO mortgages (
+        name, lender, is_primary, original_principal_cents, current_principal_cents,
+        interest_rate_apy, term_months, start_date, scheduled_payment_cents,
+        payment_day, escrow_enabled, escrow_taxes_cents, escrow_insurance_cents,
+        escrow_mip_cents, escrow_hoa_cents, notes, active, split_mode
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+      RETURNING id, name, lender, is_primary as "isPrimary",
+               original_principal_cents as "originalPrincipal", current_principal_cents as "currentPrincipal",
+               interest_rate_apy as "interestRateApy", term_months as "termMonths",
+               start_date as "startDate", scheduled_payment_cents as "scheduledPayment",
+               payment_day as "paymentDay", escrow_enabled as "escrowEnabled",
+               escrow_taxes_cents as "escrowTaxes", escrow_insurance_cents as "escrowInsurance",
+               escrow_mip_cents as "escrowMip", escrow_hoa_cents as "escrowHoa",
+               notes, active, split_mode as "splitMode",
+               created_at as "createdAt", updated_at as "updatedAt"
+    `, [name, lender, isPrimary, originalPrincipal, currentPrincipal,
+        interestRateApy, termMonths, startDate, scheduledPayment,
+        paymentDay, escrowEnabled, escrowTaxes, escrowInsurance,
+        escrowMip, escrowHoa, notes, active, splitMode])
+
+    const mortgage = mortgageResult.rows[0]
+
+    // Insert splits
+    if (splits && splits.length > 0) {
+      const insertedSplits = []
+      for (const split of splits) {
+        const splitResult = await client.query(`
+          INSERT INTO mortgage_splits (mortgage_id, member_id, value)
+          VALUES ($1, $2, $3)
+          RETURNING id, member_id as "memberId", value
+        `, [mortgage.id, split.personId, split.value])
+        insertedSplits.push({
+          personId: split.personId,
+          value: split.value
+        })
+      }
+      mortgage.splits = insertedSplits
+    } else {
+      mortgage.splits = []
+    }
+
+    await client.query('COMMIT')
     res.json(mortgage)
   } catch (error) {
+    await client.query('ROLLBACK')
+    console.error('Error creating mortgage:', error)
     res.status(500).json({ error: 'Failed to create mortgage' })
+  } finally {
+    client.release()
   }
 })
 
 app.put('/api/mortgages/:id', async (req, res) => {
+  const client = await pool.connect()
   try {
-    // TODO: Implement direct SQL query for mortgage update
-    const mortgage = { id: req.params.id, ...req.body, splits: [] }
+    await client.query('BEGIN')
+
+    const {
+      name, lender, isPrimary, originalPrincipal, currentPrincipal,
+      interestRateApy, termMonths, startDate, scheduledPayment,
+      paymentDay, escrowEnabled, escrowTaxes, escrowInsurance,
+      escrowMip, escrowHoa, notes, active, splitMode, splits
+    } = req.body
+
+    // Update mortgage
+    const mortgageResult = await client.query(`
+      UPDATE mortgages SET
+        name = $2, lender = $3, is_primary = $4, original_principal_cents = $5,
+        current_principal_cents = $6, interest_rate_apy = $7, term_months = $8,
+        start_date = $9, scheduled_payment_cents = $10, payment_day = $11,
+        escrow_enabled = $12, escrow_taxes_cents = $13, escrow_insurance_cents = $14,
+        escrow_mip_cents = $15, escrow_hoa_cents = $16, notes = $17,
+        active = $18, split_mode = $19, updated_at = NOW()
+      WHERE id = $1
+      RETURNING id, name, lender, is_primary as "isPrimary",
+               original_principal_cents as "originalPrincipal", current_principal_cents as "currentPrincipal",
+               interest_rate_apy as "interestRateApy", term_months as "termMonths",
+               start_date as "startDate", scheduled_payment_cents as "scheduledPayment",
+               payment_day as "paymentDay", escrow_enabled as "escrowEnabled",
+               escrow_taxes_cents as "escrowTaxes", escrow_insurance_cents as "escrowInsurance",
+               escrow_mip_cents as "escrowMip", escrow_hoa_cents as "escrowHoa",
+               notes, active, split_mode as "splitMode",
+               created_at as "createdAt", updated_at as "updatedAt"
+    `, [req.params.id, name, lender, isPrimary, originalPrincipal, currentPrincipal,
+        interestRateApy, termMonths, startDate, scheduledPayment,
+        paymentDay, escrowEnabled, escrowTaxes, escrowInsurance,
+        escrowMip, escrowHoa, notes, active, splitMode])
+
+    const mortgage = mortgageResult.rows[0]
+
+    // Delete existing splits
+    await client.query('DELETE FROM mortgage_splits WHERE mortgage_id = $1', [req.params.id])
+
+    // Insert new splits
+    if (splits && splits.length > 0) {
+      const insertedSplits = []
+      for (const split of splits) {
+        const splitResult = await client.query(`
+          INSERT INTO mortgage_splits (mortgage_id, member_id, value)
+          VALUES ($1, $2, $3)
+          RETURNING id, member_id as "memberId", value
+        `, [mortgage.id, split.personId, split.value])
+        insertedSplits.push({
+          personId: split.personId,
+          value: split.value
+        })
+      }
+      mortgage.splits = insertedSplits
+    } else {
+      mortgage.splits = []
+    }
+
+    await client.query('COMMIT')
     res.json(mortgage)
   } catch (error) {
+    await client.query('ROLLBACK')
+    console.error('Error updating mortgage:', error)
     res.status(500).json({ error: 'Failed to update mortgage' })
+  } finally {
+    client.release()
   }
 })
 
 app.delete('/api/mortgages/:id', async (req, res) => {
   try {
-    // TODO: Implement direct SQL query for mortgage deletion
+    // Delete mortgage (cascade will handle splits and payments)
+    const result = await query('DELETE FROM mortgages WHERE id = $1', [req.params.id])
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Mortgage not found' })
+    }
+
     res.json({ success: true })
   } catch (error) {
+    console.error('Error deleting mortgage:', error)
     res.status(500).json({ error: 'Failed to delete mortgage' })
   }
 })
