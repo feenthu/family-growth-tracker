@@ -8,7 +8,9 @@
       "mcp__jason-tan-swe-railway-mcp__project_list",
       "Read(//Users/to920d/Documents/Projects/TSO/**)",
       "Bash(npm install:*)",
-      "Bash(npm start)"
+      "Bash(npm start)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []

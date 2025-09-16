@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "start": "tsx server.ts",
     "db:init": "tsx db/init.ts",
-    "db:seed": "tsx db/seed.ts",
+    "db:seed": "echo \"Database seeding not yet implemented\"",
     "test": "echo \"Tests coming soon\" && exit 0",
     "test:watch": "echo \"Test watch mode coming soon\" && exit 0",
     "lint": "echo \"Linting coming soon\" && exit 0",
