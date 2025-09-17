@@ -136,6 +136,26 @@ app.post('/api/members', async (req, res) => {
   }
 })
 
+app.put('/api/members/:id', async (req, res) => {
+  try {
+    const { name, color } = req.body
+    const result = await query(`
+      UPDATE members SET name = $1, color = $2, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $3
+      RETURNING id, name, color, created_at as "createdAt", updated_at as "updatedAt"
+    `, [name, color, req.params.id])
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Member not found' })
+    }
+
+    res.json(result.rows[0])
+  } catch (error) {
+    console.error('Member update error:', error)
+    res.status(500).json({ error: 'Failed to update member' })
+  }
+})
+
 app.delete('/api/members/:id', async (req, res) => {
   try {
     await query('DELETE FROM members WHERE id = $1', [req.params.id])
@@ -218,7 +238,9 @@ app.get('/api/bills', async (req, res) => {
 
 app.post('/api/bills', async (req, res) => {
   try {
-    const { name, amountCents, dueDate, recurringBillId, period, splitMode, splits } = req.body
+    const { name, amount, amountCents, dueDate, recurringBillId, period, splitMode, splits } = req.body
+    // Handle both frontend (amount in dollars) and API (amountCents) formats
+    const finalAmountCents = amountCents || (amount ? Math.round(amount * 100) : 0)
     const client = await pool.connect()
     try {
       await client.query('BEGIN')
@@ -229,7 +251,7 @@ app.post('/api/bills', async (req, res) => {
         RETURNING id, name, amount_cents as "amountCents", due_date as "dueDate",
                  recurring_bill_id as "recurringBillId", period, split_mode as "splitMode",
                  created_at as "createdAt", updated_at as "updatedAt"
-      `, [name, amountCents, new Date(dueDate), recurringBillId, period, splitMode])
+      `, [name, finalAmountCents, new Date(dueDate), recurringBillId, period, splitMode])
 
       const bill = billResult.rows[0]
 
@@ -241,7 +263,7 @@ app.post('/api/bills', async (req, res) => {
             INSERT INTO bill_splits (bill_id, member_id, value)
             VALUES ($1, $2, $3)
             RETURNING id, member_id as "memberId", value
-          `, [bill.id, split.memberId, split.value])
+          `, [bill.id, split.memberId || split.personId, split.value])
           insertedSplits.push(splitResult.rows[0])
         }
         bill.splits = insertedSplits
@@ -298,7 +320,7 @@ app.put('/api/bills/:id', async (req, res) => {
             INSERT INTO bill_splits (bill_id, member_id, value)
             VALUES ($1, $2, $3)
             RETURNING id, member_id as "memberId", value
-          `, [bill.id, split.memberId, split.value])
+          `, [bill.id, split.memberId || split.personId, split.value])
           insertedSplits.push(splitResult.rows[0])
         }
         bill.splits = insertedSplits
@@ -498,7 +520,9 @@ app.get('/api/recurring-bills', async (req, res) => {
 
 app.post('/api/recurring-bills', async (req, res) => {
   try {
-    const { name, amountCents, dayOfMonth, frequency, lastGeneratedPeriod, splitMode, splits } = req.body
+    const { name, amount, amountCents, dayOfMonth, frequency, lastGeneratedPeriod, splitMode, splits } = req.body
+    // Handle both frontend (amount in dollars) and API (amountCents) formats
+    const finalAmountCents = amountCents || (amount ? Math.round(amount * 100) : 0)
     const client = await pool.connect()
     try {
       await client.query('BEGIN')
@@ -509,7 +533,7 @@ app.post('/api/recurring-bills', async (req, res) => {
         RETURNING id, name, amount_cents as "amountCents", day_of_month as "dayOfMonth",
                  frequency, last_generated_period as "lastGeneratedPeriod", split_mode as "splitMode",
                  created_at as "createdAt", updated_at as "updatedAt"
-      `, [name, amountCents, dayOfMonth, frequency, lastGeneratedPeriod, splitMode])
+      `, [name, finalAmountCents, dayOfMonth, frequency, lastGeneratedPeriod, splitMode])
 
       const recurringBill = billResult.rows[0]
 
@@ -611,26 +635,24 @@ app.delete('/api/recurring-bills/:id', async (req, res) => {
 // Mortgages API
 app.get('/api/mortgages', async (req, res) => {
   try {
+    console.log('=== MORTGAGE GET DEBUG ===')
     // Get all mortgages with splits
     const mortgagesResult = await query(`
       SELECT
         id, name, lender, is_primary,
-        original_principal_cents / 100.0 as "original_principal",
-        current_principal_cents / 100.0 as "current_principal",
+        original_principal_cents, current_principal_cents,
         interest_rate_apy, term_months,
-        start_date, scheduled_payment_cents / 100.0 as "scheduled_payment",
+        start_date, scheduled_payment_cents,
         payment_day, escrow_enabled,
-        escrow_taxes_cents / 100.0 as "escrow_taxes",
-        escrow_insurance_cents / 100.0 as "escrow_insurance",
-        escrow_mip_cents / 100.0 as "escrow_mip",
-        escrow_hoa_cents / 100.0 as "escrow_hoa",
+        escrow_taxes_cents, escrow_insurance_cents,
+        escrow_mip_cents, escrow_hoa_cents,
         notes, active, split_mode,
         created_at, updated_at
       FROM mortgages
       ORDER BY created_at DESC
     `)
 
-    // Get splits for each mortgage
+    // Get splits for each mortgage and convert cents to dollars as numbers
     const mortgages = []
     for (const mortgage of mortgagesResult.rows) {
       const splitsResult = await query(`
@@ -639,14 +661,36 @@ app.get('/api/mortgages', async (req, res) => {
         WHERE mortgage_id = $1
       `, [mortgage.id])
 
-      mortgage.splits = splitsResult.rows.map(split => ({
-        personId: split.memberId,
-        value: split.value
-      }))
+      // Convert cents to dollars and ensure numeric types
+      const formattedMortgage = {
+        ...mortgage,
+        original_principal: Number((mortgage.original_principal_cents / 100).toFixed(2)),
+        current_principal: Number((mortgage.current_principal_cents / 100).toFixed(2)),
+        scheduled_payment: Number((mortgage.scheduled_payment_cents / 100).toFixed(2)),
+        escrow_taxes: mortgage.escrow_taxes_cents ? Number((mortgage.escrow_taxes_cents / 100).toFixed(2)) : null,
+        escrow_insurance: mortgage.escrow_insurance_cents ? Number((mortgage.escrow_insurance_cents / 100).toFixed(2)) : null,
+        escrow_mip: mortgage.escrow_mip_cents ? Number((mortgage.escrow_mip_cents / 100).toFixed(2)) : null,
+        escrow_hoa: mortgage.escrow_hoa_cents ? Number((mortgage.escrow_hoa_cents / 100).toFixed(2)) : null,
+        splits: splitsResult.rows.map(split => ({
+          personId: split.memberId,
+          value: split.value
+        }))
+      }
 
-      mortgages.push(mortgage)
+      // Remove the _cents fields from the response
+      delete formattedMortgage.original_principal_cents
+      delete formattedMortgage.current_principal_cents
+      delete formattedMortgage.scheduled_payment_cents
+      delete formattedMortgage.escrow_taxes_cents
+      delete formattedMortgage.escrow_insurance_cents
+      delete formattedMortgage.escrow_mip_cents
+      delete formattedMortgage.escrow_hoa_cents
+
+      mortgages.push(formattedMortgage)
     }
 
+    console.log('Returning mortgages:', JSON.stringify(mortgages, null, 2))
+    console.log('========================')
     res.json(mortgages)
   } catch (error) {
     console.error('Error fetching mortgages:', error)
@@ -759,15 +803,12 @@ app.put('/api/mortgages/:id', async (req, res) => {
         active = $18, split_mode = $19, updated_at = NOW()
       WHERE id = $1
       RETURNING id, name, lender, is_primary,
-               original_principal_cents / 100.0 as "original_principal",
-               current_principal_cents / 100.0 as "current_principal",
+               original_principal_cents, current_principal_cents,
                interest_rate_apy, term_months,
-               start_date, scheduled_payment_cents / 100.0 as "scheduled_payment",
+               start_date, scheduled_payment_cents,
                payment_day, escrow_enabled,
-               escrow_taxes_cents / 100.0 as "escrow_taxes",
-               escrow_insurance_cents / 100.0 as "escrow_insurance",
-               escrow_mip_cents / 100.0 as "escrow_mip",
-               escrow_hoa_cents / 100.0 as "escrow_hoa",
+               escrow_taxes_cents, escrow_insurance_cents,
+               escrow_mip_cents, escrow_hoa_cents,
                notes, active, split_mode,
                created_at, updated_at
     `, [req.params.id, name, lender, isPrimary, originalPrincipalCents, currentPrincipalCents,
@@ -799,8 +840,29 @@ app.put('/api/mortgages/:id', async (req, res) => {
       mortgage.splits = []
     }
 
+    // Convert cents to dollars and ensure numeric types
+    const formattedMortgage = {
+      ...mortgage,
+      original_principal: Number((mortgage.original_principal_cents / 100).toFixed(2)),
+      current_principal: Number((mortgage.current_principal_cents / 100).toFixed(2)),
+      scheduled_payment: Number((mortgage.scheduled_payment_cents / 100).toFixed(2)),
+      escrow_taxes: mortgage.escrow_taxes_cents ? Number((mortgage.escrow_taxes_cents / 100).toFixed(2)) : null,
+      escrow_insurance: mortgage.escrow_insurance_cents ? Number((mortgage.escrow_insurance_cents / 100).toFixed(2)) : null,
+      escrow_mip: mortgage.escrow_mip_cents ? Number((mortgage.escrow_mip_cents / 100).toFixed(2)) : null,
+      escrow_hoa: mortgage.escrow_hoa_cents ? Number((mortgage.escrow_hoa_cents / 100).toFixed(2)) : null
+    }
+
+    // Remove the _cents fields from the response
+    delete formattedMortgage.original_principal_cents
+    delete formattedMortgage.current_principal_cents
+    delete formattedMortgage.scheduled_payment_cents
+    delete formattedMortgage.escrow_taxes_cents
+    delete formattedMortgage.escrow_insurance_cents
+    delete formattedMortgage.escrow_mip_cents
+    delete formattedMortgage.escrow_hoa_cents
+
     await client.query('COMMIT')
-    res.json(mortgage)
+    res.json(formattedMortgage)
   } catch (error) {
     await client.query('ROLLBACK')
     console.error('Error updating mortgage:', error)
@@ -886,6 +948,40 @@ app.put('/api/settings/:key', async (req, res) => {
   } catch (error) {
     console.error('Settings update error:', error)
     res.status(500).json({ error: 'Failed to update setting' })
+  }
+})
+
+app.put('/api/settings', async (req, res) => {
+  try {
+    const settings = req.body
+    const client = await pool.connect()
+    try {
+      await client.query('BEGIN')
+
+      const results = {}
+      for (const [key, value] of Object.entries(settings)) {
+        const result = await client.query(`
+          INSERT INTO settings (key, value)
+          VALUES ($1, $2)
+          ON CONFLICT (key) DO UPDATE SET
+            value = EXCLUDED.value,
+            updated_at = NOW()
+          RETURNING key, value
+        `, [key, value])
+        results[key] = result.rows[0].value
+      }
+
+      await client.query('COMMIT')
+      res.json(results)
+    } catch (error) {
+      await client.query('ROLLBACK')
+      throw error
+    } finally {
+      client.release()
+    }
+  } catch (error) {
+    console.error('Bulk settings update error:', error)
+    res.status(500).json({ error: 'Failed to update settings' })
   }
 })
 
