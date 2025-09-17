@@ -614,15 +614,18 @@ app.get('/api/mortgages', async (req, res) => {
     // Get all mortgages with splits
     const mortgagesResult = await query(`
       SELECT
-        id, name, lender, is_primary as "isPrimary",
-        original_principal_cents as "originalPrincipal", current_principal_cents as "currentPrincipal",
-        interest_rate_apy as "interestRateApy", term_months as "termMonths",
-        start_date as "startDate", scheduled_payment_cents as "scheduledPayment",
-        payment_day as "paymentDay", escrow_enabled as "escrowEnabled",
-        escrow_taxes_cents as "escrowTaxes", escrow_insurance_cents as "escrowInsurance",
-        escrow_mip_cents as "escrowMip", escrow_hoa_cents as "escrowHoa",
-        notes, active, split_mode as "splitMode",
-        created_at as "createdAt", updated_at as "updatedAt"
+        id, name, lender, is_primary,
+        original_principal_cents / 100.0 as "original_principal",
+        current_principal_cents / 100.0 as "current_principal",
+        interest_rate_apy, term_months,
+        start_date, scheduled_payment_cents / 100.0 as "scheduled_payment",
+        payment_day, escrow_enabled,
+        escrow_taxes_cents / 100.0 as "escrow_taxes",
+        escrow_insurance_cents / 100.0 as "escrow_insurance",
+        escrow_mip_cents / 100.0 as "escrow_mip",
+        escrow_hoa_cents / 100.0 as "escrow_hoa",
+        notes, active, split_mode,
+        created_at, updated_at
       FROM mortgages
       ORDER BY created_at DESC
     `)
@@ -684,15 +687,18 @@ app.post('/api/mortgages', async (req, res) => {
         payment_day, escrow_enabled, escrow_taxes_cents, escrow_insurance_cents,
         escrow_mip_cents, escrow_hoa_cents, notes, active, split_mode
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
-      RETURNING id, name, lender, is_primary as "isPrimary",
-               original_principal_cents as "originalPrincipal", current_principal_cents as "currentPrincipal",
-               interest_rate_apy as "interestRateApy", term_months as "termMonths",
-               start_date as "startDate", scheduled_payment_cents as "scheduledPayment",
-               payment_day as "paymentDay", escrow_enabled as "escrowEnabled",
-               escrow_taxes_cents as "escrowTaxes", escrow_insurance_cents as "escrowInsurance",
-               escrow_mip_cents as "escrowMip", escrow_hoa_cents as "escrowHoa",
-               notes, active, split_mode as "splitMode",
-               created_at as "createdAt", updated_at as "updatedAt"
+      RETURNING id, name, lender, is_primary,
+               original_principal_cents / 100.0 as "original_principal",
+               current_principal_cents / 100.0 as "current_principal",
+               interest_rate_apy, term_months,
+               start_date, scheduled_payment_cents / 100.0 as "scheduled_payment",
+               payment_day, escrow_enabled,
+               escrow_taxes_cents / 100.0 as "escrow_taxes",
+               escrow_insurance_cents / 100.0 as "escrow_insurance",
+               escrow_mip_cents / 100.0 as "escrow_mip",
+               escrow_hoa_cents / 100.0 as "escrow_hoa",
+               notes, active, split_mode,
+               created_at, updated_at
     `, [name, lender, isPrimary, originalPrincipalCents, currentPrincipalCents,
         interestRateApy, termMonths, startDate, scheduledPaymentCents,
         paymentDay, escrowEnabled, escrowTaxesCents, escrowInsuranceCents,
@@ -752,15 +758,18 @@ app.put('/api/mortgages/:id', async (req, res) => {
         escrow_mip_cents = $15, escrow_hoa_cents = $16, notes = $17,
         active = $18, split_mode = $19, updated_at = NOW()
       WHERE id = $1
-      RETURNING id, name, lender, is_primary as "isPrimary",
-               original_principal_cents as "originalPrincipal", current_principal_cents as "currentPrincipal",
-               interest_rate_apy as "interestRateApy", term_months as "termMonths",
-               start_date as "startDate", scheduled_payment_cents as "scheduledPayment",
-               payment_day as "paymentDay", escrow_enabled as "escrowEnabled",
-               escrow_taxes_cents as "escrowTaxes", escrow_insurance_cents as "escrowInsurance",
-               escrow_mip_cents as "escrowMip", escrow_hoa_cents as "escrowHoa",
-               notes, active, split_mode as "splitMode",
-               created_at as "createdAt", updated_at as "updatedAt"
+      RETURNING id, name, lender, is_primary,
+               original_principal_cents / 100.0 as "original_principal",
+               current_principal_cents / 100.0 as "current_principal",
+               interest_rate_apy, term_months,
+               start_date, scheduled_payment_cents / 100.0 as "scheduled_payment",
+               payment_day, escrow_enabled,
+               escrow_taxes_cents / 100.0 as "escrow_taxes",
+               escrow_insurance_cents / 100.0 as "escrow_insurance",
+               escrow_mip_cents / 100.0 as "escrow_mip",
+               escrow_hoa_cents / 100.0 as "escrow_hoa",
+               notes, active, split_mode,
+               created_at, updated_at
     `, [req.params.id, name, lender, isPrimary, originalPrincipalCents, currentPrincipalCents,
         interestRateApy, termMonths, startDate, scheduledPaymentCents,
         paymentDay, escrowEnabled, escrowTaxesCents, escrowInsuranceCents,
