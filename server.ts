@@ -611,6 +611,7 @@ app.delete('/api/recurring-bills/:id', async (req, res) => {
 // Mortgages API
 app.get('/api/mortgages', async (req, res) => {
   try {
+    console.log('=== MORTGAGE GET DEBUG ===')
     // Get all mortgages with splits
     const mortgagesResult = await query(`
       SELECT
@@ -647,6 +648,8 @@ app.get('/api/mortgages', async (req, res) => {
       mortgages.push(mortgage)
     }
 
+    console.log('Returning mortgages:', JSON.stringify(mortgages, null, 2))
+    console.log('========================')
     res.json(mortgages)
   } catch (error) {
     console.error('Error fetching mortgages:', error)
