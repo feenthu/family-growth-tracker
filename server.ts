@@ -616,22 +616,19 @@ app.get('/api/mortgages', async (req, res) => {
     const mortgagesResult = await query(`
       SELECT
         id, name, lender, is_primary,
-        original_principal_cents / 100.0 as "original_principal",
-        current_principal_cents / 100.0 as "current_principal",
+        original_principal_cents, current_principal_cents,
         interest_rate_apy, term_months,
-        start_date, scheduled_payment_cents / 100.0 as "scheduled_payment",
+        start_date, scheduled_payment_cents,
         payment_day, escrow_enabled,
-        escrow_taxes_cents / 100.0 as "escrow_taxes",
-        escrow_insurance_cents / 100.0 as "escrow_insurance",
-        escrow_mip_cents / 100.0 as "escrow_mip",
-        escrow_hoa_cents / 100.0 as "escrow_hoa",
+        escrow_taxes_cents, escrow_insurance_cents,
+        escrow_mip_cents, escrow_hoa_cents,
         notes, active, split_mode,
         created_at, updated_at
       FROM mortgages
       ORDER BY created_at DESC
     `)
 
-    // Get splits for each mortgage
+    // Get splits for each mortgage and convert cents to dollars as numbers
     const mortgages = []
     for (const mortgage of mortgagesResult.rows) {
       const splitsResult = await query(`
@@ -640,12 +637,32 @@ app.get('/api/mortgages', async (req, res) => {
         WHERE mortgage_id = $1
       `, [mortgage.id])
 
-      mortgage.splits = splitsResult.rows.map(split => ({
-        personId: split.memberId,
-        value: split.value
-      }))
+      // Convert cents to dollars and ensure numeric types
+      const formattedMortgage = {
+        ...mortgage,
+        original_principal: Number((mortgage.original_principal_cents / 100).toFixed(2)),
+        current_principal: Number((mortgage.current_principal_cents / 100).toFixed(2)),
+        scheduled_payment: Number((mortgage.scheduled_payment_cents / 100).toFixed(2)),
+        escrow_taxes: mortgage.escrow_taxes_cents ? Number((mortgage.escrow_taxes_cents / 100).toFixed(2)) : null,
+        escrow_insurance: mortgage.escrow_insurance_cents ? Number((mortgage.escrow_insurance_cents / 100).toFixed(2)) : null,
+        escrow_mip: mortgage.escrow_mip_cents ? Number((mortgage.escrow_mip_cents / 100).toFixed(2)) : null,
+        escrow_hoa: mortgage.escrow_hoa_cents ? Number((mortgage.escrow_hoa_cents / 100).toFixed(2)) : null,
+        splits: splitsResult.rows.map(split => ({
+          personId: split.memberId,
+          value: split.value
+        }))
+      }
 
-      mortgages.push(mortgage)
+      // Remove the _cents fields from the response
+      delete formattedMortgage.original_principal_cents
+      delete formattedMortgage.current_principal_cents
+      delete formattedMortgage.scheduled_payment_cents
+      delete formattedMortgage.escrow_taxes_cents
+      delete formattedMortgage.escrow_insurance_cents
+      delete formattedMortgage.escrow_mip_cents
+      delete formattedMortgage.escrow_hoa_cents
+
+      mortgages.push(formattedMortgage)
     }
 
     console.log('Returning mortgages:', JSON.stringify(mortgages, null, 2))
