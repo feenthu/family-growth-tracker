@@ -55,3 +55,40 @@ export function formatFrequency(frequency: string): string {
 export function formatRecurrenceText(dayOfMonth: number, frequency: string): string {
   return `Due on the ${formatOrdinal(dayOfMonth)} ${formatFrequency(frequency)}`;
 }
+
+/**
+ * Safely formats a date string with proper validation and error handling
+ * Handles various input formats and provides fallback for invalid dates
+ */
+export function formatBillDate(
+  dateString: string | null | undefined,
+  options: Intl.DateTimeFormatOptions = { month: 'long', day: 'numeric', year: 'numeric' }
+): string {
+  // Handle null, undefined, or empty strings
+  if (!dateString || dateString.trim() === '') {
+    return 'Date not set';
+  }
+
+  try {
+    let date: Date;
+
+    // Try parsing the date string directly first
+    date = new Date(dateString);
+
+    // If that fails, try appending time component for date-only strings
+    if (isNaN(date.getTime()) && !dateString.includes('T')) {
+      date = new Date(dateString + 'T00:00:00');
+    }
+
+    // Final validation - check if the date is valid
+    if (isNaN(date.getTime())) {
+      console.warn('Invalid date string received:', dateString);
+      return 'Invalid date';
+    }
+
+    return date.toLocaleDateString(undefined, options);
+  } catch (error) {
+    console.error('Error formatting date:', dateString, error);
+    return 'Invalid date';
+  }
+}

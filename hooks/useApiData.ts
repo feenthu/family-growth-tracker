@@ -43,11 +43,23 @@ function billToApiBill(bill: Bill): any {
 }
 
 function apiBillToBill(apiBill: ApiBill): Bill {
+  // Validate and normalize the dueDate
+  let normalizedDueDate = apiBill.dueDate;
+
+  // Handle cases where dueDate might be null, undefined, or in unexpected format
+  if (!normalizedDueDate) {
+    console.warn('Bill has no dueDate:', apiBill.id, apiBill.name);
+    normalizedDueDate = '';
+  } else if (typeof normalizedDueDate !== 'string') {
+    console.warn('Bill dueDate is not a string:', apiBill.id, typeof normalizedDueDate, normalizedDueDate);
+    normalizedDueDate = String(normalizedDueDate);
+  }
+
   return {
     id: apiBill.id,
     name: apiBill.name,
     amount: apiBill.amountCents / 100,
-    dueDate: apiBill.dueDate,
+    dueDate: normalizedDueDate,
     recurringBillId: apiBill.recurringBillId,
     period: apiBill.period,
     splitMode: apiBill.splitMode as any,

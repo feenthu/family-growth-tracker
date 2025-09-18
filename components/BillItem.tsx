@@ -5,6 +5,7 @@ import { Bill, Person, Payment, PaymentMethod } from '../types';
 import { PencilIcon, TrashIcon, RepeatIcon, CreditCardIcon, PaperclipIcon, PlusIcon } from './Icons';
 import { Avatar } from './Avatar';
 import { calculateSplitAmounts, resolveItemCycle, BillStatusDetails, BillStatus } from '../utils/calculations';
+import { formatBillDate } from '../utils/formatUtils';
 
 interface BillItemProps {
   bill: Bill;
@@ -21,17 +22,12 @@ const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 };
 
-const formatDate = (dateString: string, options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' }) => {
-    // Add T00:00:00 to ensure the date is parsed in the local timezone, not UTC
-    return new Date(dateString + 'T00:00:00').toLocaleDateString(undefined, options);
-};
-
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 
 const PaymentRow: React.FC<{payment: Payment, onEdit: () => void, onDelete: () => void}> = ({ payment, onEdit, onDelete }) => (
     <div className="grid grid-cols-12 gap-2 items-center text-sm py-2 border-t border-slate-200 dark:border-slate-600">
-        <div className="col-span-3 font-semibold">{formatDate(payment.paidDate)}</div>
+        <div className="col-span-3 font-semibold">{formatBillDate(payment.paidDate, { month: 'short', day: 'numeric' })}</div>
         <div className="col-span-3 text-slate-600 dark:text-slate-400">{capitalize(payment.method)}</div>
         <div className="col-span-3 font-bold">{formatCurrency(payment.amount)}</div>
         <div className="col-span-3 flex items-center justify-end gap-2">
@@ -73,7 +69,7 @@ export const BillItem: React.FC<BillItemProps> = ({ bill, people, payments, onEd
             {bill.recurringBillId && <RepeatIcon className="w-4 h-4 text-slate-400" />}
             <h3 className={`font-bold text-lg text-slate-800 dark:text-slate-100 ${isFullyPaid ? 'line-through' : ''}`}>{bill.name}</h3>
           </div>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Due on {formatDate(bill.dueDate, { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">Due on {formatBillDate(bill.dueDate, { month: 'long', day: 'numeric', year: 'numeric' })}</p>
         </div>
         <div className="text-right">
           <p className="text-xl font-extrabold text-slate-900 dark:text-white">{formatCurrency(bill.amount)}</p>
