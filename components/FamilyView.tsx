@@ -19,12 +19,13 @@ export const FamilyView: React.FC<FamilyViewProps> = ({ bills, people, payments,
   
   const { dueThisWeek, dueLaterThisMonth } = useMemo(() => {
     const today = new Date();
-    const weekStart = startOfDay(today);
-    
-    const endOfWeek = new Date(weekStart);
-    endOfWeek.setDate(weekStart.getDate() + 6);
-    const weekEnd = endOfDay(endOfWeek);
-    
+    const todayStart = startOfDay(today);
+
+    // Calculate 7 days from today for "this week" cutoff
+    const sevenDaysFromToday = new Date(todayStart);
+    sevenDaysFromToday.setDate(todayStart.getDate() + 7);
+    const sevenDaysEnd = endOfDay(sevenDaysFromToday);
+
     const monthEnd = getMonthEnd(today);
 
     const allDueItems: DueItem[] = [];
@@ -64,10 +65,17 @@ export const FamilyView: React.FC<FamilyViewProps> = ({ bills, people, payments,
 
         if (isOverdue) {
             dueThisWeekItems.push(item);
-        } else if (item.dueDate >= weekStart && item.dueDate <= weekEnd) {
-            dueThisWeekItems.push(item);
-        } else if (item.dueDate > weekEnd && item.dueDate <= monthEnd) {
-            dueLaterThisMonthItems.push(item);
+        } else {
+            // Calculate days between today and due date
+            const daysDifference = Math.ceil((item.dueDate.getTime() - todayStart.getTime()) / (1000 * 60 * 60 * 24));
+
+            if (daysDifference <= 7) {
+                // Due within 7 days = "Due This Week"
+                dueThisWeekItems.push(item);
+            } else if (item.dueDate <= monthEnd) {
+                // Due more than 7 days away but within current month = "Due Later This Month"
+                dueLaterThisMonthItems.push(item);
+            }
         }
     });
 
