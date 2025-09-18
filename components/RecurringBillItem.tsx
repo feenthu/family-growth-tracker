@@ -3,6 +3,7 @@ import { RecurringBill, Person } from '../types';
 import { PencilIcon, TrashIcon, RepeatIcon } from './Icons';
 import { calculateSplitAmounts } from '../utils/calculations';
 import { Avatar } from './Avatar';
+import { formatRecurrenceText } from '../utils/formatUtils';
 
 interface RecurringBillItemProps {
   bill: RecurringBill;
@@ -15,8 +16,6 @@ const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 };
 
-const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-
 export const RecurringBillItem: React.FC<RecurringBillItemProps> = ({ bill, people, onEdit, onDelete }) => {
   const getPerson = (personId: string) => people.find(p => p.id === personId);
   const calculatedSplits = useMemo(() => calculateSplitAmounts(bill, people), [bill, people]);
@@ -28,7 +27,7 @@ export const RecurringBillItem: React.FC<RecurringBillItemProps> = ({ bill, peop
           <h3 className="font-bold text-lg text-slate-800 dark:text-slate-100">{bill.name}</h3>
           <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 mt-1">
             <RepeatIcon className="w-4 h-4" />
-            <span>{capitalize(bill.frequency)} on day {bill.dayOfMonth}</span>
+            <span>{formatRecurrenceText(bill.dayOfMonth, bill.frequency)}</span>
           </div>
         </div>
         <div className="text-right">
