@@ -246,7 +246,15 @@ export function resolveItemCycle(
         const bill = item as Bill;
         if (!bill.dueDate) return null;
 
-        const dueDate = new Date(bill.dueDate + 'T00:00:00');
+        // Handle both date-only strings (YYYY-MM-DD) and full ISO strings
+        let dueDate: Date;
+        if (bill.dueDate.includes('T')) {
+            // Already has time component
+            dueDate = new Date(bill.dueDate);
+        } else {
+            // Date-only string, append time component for local timezone
+            dueDate = new Date(bill.dueDate + 'T00:00:00');
+        }
         const paymentsForBill = (allPayments as Payment[]).filter(p => p.billId === bill.id);
         
         const totalPaid = paymentsForBill.reduce((sum, p) => sum + p.amount, 0);
