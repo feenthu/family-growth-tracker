@@ -3,6 +3,7 @@ import { Mortgage, Person, MortgagePayment } from '../types';
 import { PencilIcon, TrashIcon, CreditCardIcon, PaperclipIcon, HomeIcon } from './Icons';
 import { Avatar } from './Avatar';
 import { calculateSplitAmounts, resolveItemCycle, ItemCycle, BillStatus } from '../utils/calculations';
+import { formatOrdinal } from '../utils/formatUtils';
 
 interface MortgageItemProps {
   mortgage: Mortgage;
@@ -70,7 +71,7 @@ export const MortgageItem: React.FC<MortgageItemProps> = ({ mortgage, people, pa
             <HomeIcon className="w-5 h-5 text-slate-500" />
             <h3 className={`font-bold text-lg text-slate-800 dark:text-slate-100`}>{mortgage.name}</h3>
           </div>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Due on day {mortgage.payment_day} of the month</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">Due on the {formatOrdinal(mortgage.payment_day)} of each month</p>
           <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">Remaining Principal: {formatCurrency(mortgage.current_principal)}</p>
         </div>
         <div className="text-right">
