@@ -166,19 +166,26 @@ export function resolveItemCycle(
 
     if (isMortgage) {
         const mortgage = item as Mortgage;
-        // Use T00:00:00 to parse date in local time zone, avoiding UTC conversion issues.
-        const startDate = new Date(mortgage.start_date + 'T00:00:00');
+        // Handle both date-only strings (YYYY-MM-DD) and full ISO strings
+        let startDate: Date;
+        if (mortgage.start_date.includes('T')) {
+            // Already has time component
+            startDate = new Date(mortgage.start_date);
+        } else {
+            // Date-only string, append time component for local timezone
+            startDate = new Date(mortgage.start_date + 'T00:00:00');
+        }
         const firstDueDate = computeFirstDueDate(startDate, mortgage.payment_day);
 
-        // DEBUG: Log mortgage calculations
+        // DEBUG: Log mortgage calculations with safe date handling
         console.log(`🏠 Mortgage Debug: "${mortgage.name}"`);
         console.log('  Start date:', mortgage.start_date);
         console.log('  Payment day:', mortgage.payment_day);
-        console.log('  Parsed start date:', startDate.toISOString());
-        console.log('  First due date:', firstDueDate.toISOString());
+        console.log('  Parsed start date:', startDate.getTime() ? startDate.toISOString() : 'Invalid Date');
+        console.log('  First due date:', firstDueDate.getTime() ? firstDueDate.toISOString() : 'Invalid Date');
         console.log('  Today:', today.toISOString());
         console.log('  Today start of day:', startOfDay(today).toISOString());
-        console.log('  First due start of day:', startOfDay(firstDueDate).toISOString());
+        console.log('  First due start of day:', firstDueDate.getTime() ? startOfDay(firstDueDate).toISOString() : 'Invalid Date');
         console.log('  Is today < firstDue?', startOfDay(today) < startOfDay(firstDueDate));
 
         if (startOfDay(today) < startOfDay(firstDueDate)) {
@@ -206,8 +213,8 @@ export function resolveItemCycle(
         console.log('  Current cycle calculation:');
         console.log('    Year:', year);
         console.log('    Month:', month);
-        console.log('    Current cycle due date:', currentCycleDueDate.toISOString());
-        console.log('    Current cycle start of day:', startOfDay(currentCycleDueDate).toISOString());
+        console.log('    Current cycle due date:', currentCycleDueDate.getTime() ? currentCycleDueDate.toISOString() : 'Invalid Date');
+        console.log('    Current cycle start of day:', currentCycleDueDate.getTime() ? startOfDay(currentCycleDueDate).toISOString() : 'Invalid Date');
         console.log('    Is currentCycle < firstDue?', startOfDay(currentCycleDueDate) < startOfDay(firstDueDate));
 
         if (startOfDay(currentCycleDueDate) < startOfDay(firstDueDate)) {
@@ -252,7 +259,7 @@ export function resolveItemCycle(
         console.log('  Status calculation:');
         console.log('    Total remaining:', totalRemaining);
         console.log('    Total paid:', totalPaid);
-        console.log('    Cycle end:', cycleEnd.toISOString());
+        console.log('    Cycle end:', cycleEnd.getTime() ? cycleEnd.toISOString() : 'Invalid Date');
         console.log('    Today start of day:', startOfDay(today).toISOString());
         console.log('    Is today > cycleEnd?', startOfDay(today) > cycleEnd);
 
@@ -270,7 +277,7 @@ export function resolveItemCycle(
             console.log('  → Status: UNPAID');
         }
 
-        console.log('  Final result: dueDate =', currentCycleDueDate.toISOString());
+        console.log('  Final result: dueDate =', currentCycleDueDate.getTime() ? currentCycleDueDate.toISOString() : 'Invalid Date');
         return { status, totalPaid, totalRemaining, perPerson, cycleStart, cycleEnd, dueDate: currentCycleDueDate, firstDueDate, isUpcoming: false };
 
     } else {
