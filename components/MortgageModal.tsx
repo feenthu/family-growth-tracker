@@ -36,11 +36,13 @@ export const MortgageModal: React.FC<MortgageModalProps> = ({ isOpen, onClose, o
         setOriginalPrincipal(existingMortgage.original_principal);
         setInterestRate(existingMortgage.interest_rate_apy);
         setTermMonths(existingMortgage.term_months);
-        setStartDate(existingMortgage.start_date);
+        setStartDate(new Date(existingMortgage.start_date).toISOString().split('T')[0]);
         setScheduledPayment(existingMortgage.scheduled_payment);
         
         // Calculate the first due date to populate the date picker
-        const firstDueDate = computeFirstDueDate(new Date(existingMortgage.start_date + 'T00:00:00'), existingMortgage.payment_day);
+        // Handle both date string formats: "YYYY-MM-DD" and "YYYY-MM-DDTHH:mm:ss.sssZ"
+        const startDate = new Date(existingMortgage.start_date);
+        const firstDueDate = computeFirstDueDate(startDate, existingMortgage.payment_day);
         setFirstPaymentDate(firstDueDate.toISOString().split('T')[0]);
 
         setEscrowEnabled(existingMortgage.escrow_enabled);

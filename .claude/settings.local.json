@@ -15,7 +15,8 @@
       "Bash(npm start)",
       "Bash(gh pr create:*)",
       "Bash(node:*)",
-      "Bash(API_URL=https://family-growth-tracker-production.up.railway.app node test-database.ts)"
+      "Bash(API_URL=https://family-growth-tracker-production.up.railway.app node test-database.ts)",
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "ask": []
