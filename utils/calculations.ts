@@ -170,7 +170,19 @@ export function resolveItemCycle(
         const startDate = new Date(mortgage.start_date + 'T00:00:00');
         const firstDueDate = computeFirstDueDate(startDate, mortgage.payment_day);
 
+        // DEBUG: Log mortgage calculations
+        console.log(`🏠 Mortgage Debug: "${mortgage.name}"`);
+        console.log('  Start date:', mortgage.start_date);
+        console.log('  Payment day:', mortgage.payment_day);
+        console.log('  Parsed start date:', startDate.toISOString());
+        console.log('  First due date:', firstDueDate.toISOString());
+        console.log('  Today:', today.toISOString());
+        console.log('  Today start of day:', startOfDay(today).toISOString());
+        console.log('  First due start of day:', startOfDay(firstDueDate).toISOString());
+        console.log('  Is today < firstDue?', startOfDay(today) < startOfDay(firstDueDate));
+
         if (startOfDay(today) < startOfDay(firstDueDate)) {
+            console.log('  → Returning UPCOMING status');
             // Item hasn't started yet. Show as upcoming.
             const splittable = { ...mortgage, amount: mortgage.scheduled_payment };
             const splits = calculateSplitAmounts(splittable, people);
@@ -191,7 +203,15 @@ export function resolveItemCycle(
         const month = today.getMonth() + 1;
         let currentCycleDueDate = normalizeDueDate(year, month, mortgage.payment_day);
 
+        console.log('  Current cycle calculation:');
+        console.log('    Year:', year);
+        console.log('    Month:', month);
+        console.log('    Current cycle due date:', currentCycleDueDate.toISOString());
+        console.log('    Current cycle start of day:', startOfDay(currentCycleDueDate).toISOString());
+        console.log('    Is currentCycle < firstDue?', startOfDay(currentCycleDueDate) < startOfDay(firstDueDate));
+
         if (startOfDay(currentCycleDueDate) < startOfDay(firstDueDate)) {
+            console.log('  → Returning NULL (current cycle before first due)');
             return null;
         }
 
@@ -229,16 +249,28 @@ export function resolveItemCycle(
         }));
         
         let status: BillStatus;
+        console.log('  Status calculation:');
+        console.log('    Total remaining:', totalRemaining);
+        console.log('    Total paid:', totalPaid);
+        console.log('    Cycle end:', cycleEnd.toISOString());
+        console.log('    Today start of day:', startOfDay(today).toISOString());
+        console.log('    Is today > cycleEnd?', startOfDay(today) > cycleEnd);
+
         if (totalRemaining <= 0.01) {
             status = 'Paid';
+            console.log('  → Status: PAID');
         } else if (startOfDay(today) > cycleEnd) {
             status = 'Overdue';
+            console.log('  → Status: OVERDUE');
         } else if (totalPaid > 0) {
             status = 'Partially Paid';
+            console.log('  → Status: PARTIALLY PAID');
         } else {
             status = 'Unpaid';
+            console.log('  → Status: UNPAID');
         }
 
+        console.log('  Final result: dueDate =', currentCycleDueDate.toISOString());
         return { status, totalPaid, totalRemaining, perPerson, cycleStart, cycleEnd, dueDate: currentCycleDueDate, firstDueDate, isUpcoming: false };
 
     } else {
