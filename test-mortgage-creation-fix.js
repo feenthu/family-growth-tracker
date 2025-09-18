@@ -49,6 +49,7 @@ async function testMortgageCreation() {
 
     const createdMortgage = await response.json();
     console.log('✅ Successfully created mortgage!');
+    console.log('Raw response:', JSON.stringify(createdMortgage, null, 2));
     console.log('Response contains required fields:');
     console.log('- originalPrincipalCents:', createdMortgage.originalPrincipalCents);
     console.log('- currentPrincipalCents:', createdMortgage.currentPrincipalCents);
