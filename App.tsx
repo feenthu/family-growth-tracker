@@ -14,6 +14,7 @@ import { calculateSplitAmounts, calculatePaymentBreakdown, resolveItemCycle } fr
 import { FamilyView } from './components/FamilyView';
 import { MortgageManager } from './components/MortgageManager';
 import { PasswordModal } from './components/PasswordModal';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 const App: React.FC = () => {
   const [people, setPeople, peopleLoading, peopleWarning] = useMembers();
@@ -41,18 +42,27 @@ const App: React.FC = () => {
   // Note: Recurring bill generation logic should be handled server-side or moved to API hooks
 
   const totals = useMemo(() => {
+    // Helper function to safely get numeric values
+    const safeNumber = (value: any): number => {
+      if (typeof value === 'number' && !isNaN(value) && isFinite(value)) {
+        return value
+      }
+      console.warn('Invalid numeric value in calculation:', value)
+      return 0
+    }
+
     // Calculate the total planned monthly amount from active mortgages.
     const mortgagesTotal = mortgages
       .filter(m => m.active)
-      .reduce((sum, m) => sum + m.scheduled_payment, 0);
+      .reduce((sum, m) => sum + safeNumber(m.scheduled_payment), 0);
 
     // Calculate the total planned monthly amount from recurring bills with a 'monthly' frequency.
     const monthlyRecurringBillsTotal = recurringBills
       .filter(rb => rb.frequency === 'monthly')
-      .reduce((sum, rb) => sum + rb.amount, 0);
+      .reduce((sum, rb) => sum + safeNumber(rb.amount), 0);
 
     // Calculate the total from regular bills (one-time bills)
-    const regularBillsTotal = bills.reduce((sum, bill) => sum + bill.amount, 0);
+    const regularBillsTotal = bills.reduce((sum, bill) => sum + safeNumber(bill.amount), 0);
 
     // The main total is the sum of these planned amounts.
     const totalMonthly = mortgagesTotal + monthlyRecurringBillsTotal + regularBillsTotal;
@@ -387,62 +397,64 @@ const App: React.FC = () => {
 
         {/* Main Content - Always show when not loading */}
         {!isLoading && (
-          view === 'manage' ? (
-          <>
-            <Summary totalMonthly={totals.totalMonthly} perPersonTotals={totals.perPersonTotals} />
-            <div className="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
-              <div className="lg:col-span-2 space-y-8">
-                <BillManager
-                  bills={bills}
-                  people={people}
-                  payments={payments}
-                  onAddBill={() => openBillModal()}
-                  onEditBill={openBillModal}
-                  onDeleteBill={handleDeleteBill}
-                  onSaveBill={handleSaveBill}
-                  onSavePayment={handleSavePayment}
-                  onDeletePayment={handleDeletePayment}
-                  isModalOpen={isBillModalOpen}
-                  closeModal={closeBillModal}
-                  editingBill={editingBill}
-                />
-                <MortgageManager 
-                  mortgages={mortgages}
-                  people={people}
-                  payments={mortgagePayments}
-                  onSaveMortgage={handleSaveMortgage}
-                  onDeleteMortgage={handleDeleteMortgage}
-                  onSavePayment={handleSaveMortgagePayment}
-                  onDeletePayment={handleDeleteMortgagePayment}
-                />
-                <RecurringBillManager 
-                    recurringBills={recurringBills}
+          <ErrorBoundary>
+            {view === 'manage' ? (
+            <>
+              <Summary totalMonthly={totals.totalMonthly} perPersonTotals={totals.perPersonTotals} />
+              <div className="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div className="lg:col-span-2 space-y-8">
+                  <BillManager
+                    bills={bills}
                     people={people}
-                    onAddRecurring={() => openRecurringBillModal()}
-                    onEditRecurring={openRecurringBillModal}
-                    onDeleteRecurring={handleDeleteRecurringBill}
-                    onSaveRecurring={handleSaveRecurringBill}
-                    isModalOpen={isRecurringBillModalOpen}
-                    // FIX: Pass `closeRecurringBillModal` to the `closeModal` prop instead of the undefined `closeModal`.
-                    closeModal={closeRecurringBillModal}
-                    editingRecurringBill={editingRecurringBill}
-                />
+                    payments={payments}
+                    onAddBill={() => openBillModal()}
+                    onEditBill={openBillModal}
+                    onDeleteBill={handleDeleteBill}
+                    onSaveBill={handleSaveBill}
+                    onSavePayment={handleSavePayment}
+                    onDeletePayment={handleDeletePayment}
+                    isModalOpen={isBillModalOpen}
+                    closeModal={closeBillModal}
+                    editingBill={editingBill}
+                  />
+                  <MortgageManager
+                    mortgages={mortgages}
+                    people={people}
+                    payments={mortgagePayments}
+                    onSaveMortgage={handleSaveMortgage}
+                    onDeleteMortgage={handleDeleteMortgage}
+                    onSavePayment={handleSaveMortgagePayment}
+                    onDeletePayment={handleDeleteMortgagePayment}
+                  />
+                  <RecurringBillManager
+                      recurringBills={recurringBills}
+                      people={people}
+                      onAddRecurring={() => openRecurringBillModal()}
+                      onEditRecurring={openRecurringBillModal}
+                      onDeleteRecurring={handleDeleteRecurringBill}
+                      onSaveRecurring={handleSaveRecurringBill}
+                      isModalOpen={isRecurringBillModalOpen}
+                      // FIX: Pass `closeRecurringBillModal` to the `closeModal` prop instead of the undefined `closeModal`.
+                      closeModal={closeRecurringBillModal}
+                      editingRecurringBill={editingRecurringBill}
+                  />
+                </div>
+                <div className="lg:col-span-1">
+                  <PeopleManager people={people} onAddPerson={handleAddPerson} onDeletePerson={handleDeletePerson}/>
+                </div>
               </div>
-              <div className="lg:col-span-1">
-                <PeopleManager people={people} onAddPerson={handleAddPerson} onDeletePerson={handleDeletePerson}/>
-              </div>
-            </div>
-          </>
-        ) : (
-          <FamilyView 
-              bills={bills} 
-              people={people} 
-              payments={payments} 
-              mortgages={mortgages} 
-              mortgagePayments={mortgagePayments}
-              mortgagePaymentBreakdowns={mortgagePaymentBreakdowns}
-          />
-        )
+            </>
+          ) : (
+            <FamilyView
+                bills={bills}
+                people={people}
+                payments={payments}
+                mortgages={mortgages}
+                mortgagePayments={mortgagePayments}
+                mortgagePaymentBreakdowns={mortgagePaymentBreakdowns}
+            />
+          )}
+          </ErrorBoundary>
         )}
       </main>
       <PasswordModal

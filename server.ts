@@ -661,30 +661,37 @@ app.get('/api/mortgages', async (req, res) => {
         WHERE mortgage_id = $1
       `, [mortgage.id])
 
-      // Convert cents to dollars and ensure numeric types
+      // Convert to API format: camelCase field names with cent amounts
       const formattedMortgage = {
-        ...mortgage,
-        original_principal: Number((mortgage.original_principal_cents / 100).toFixed(2)),
-        current_principal: Number((mortgage.current_principal_cents / 100).toFixed(2)),
-        scheduled_payment: Number((mortgage.scheduled_payment_cents / 100).toFixed(2)),
-        escrow_taxes: mortgage.escrow_taxes_cents ? Number((mortgage.escrow_taxes_cents / 100).toFixed(2)) : null,
-        escrow_insurance: mortgage.escrow_insurance_cents ? Number((mortgage.escrow_insurance_cents / 100).toFixed(2)) : null,
-        escrow_mip: mortgage.escrow_mip_cents ? Number((mortgage.escrow_mip_cents / 100).toFixed(2)) : null,
-        escrow_hoa: mortgage.escrow_hoa_cents ? Number((mortgage.escrow_hoa_cents / 100).toFixed(2)) : null,
+        id: mortgage.id,
+        name: mortgage.name,
+        lender: mortgage.lender,
+        isPrimary: mortgage.is_primary,
+        originalPrincipalCents: mortgage.original_principal_cents,
+        currentPrincipalCents: mortgage.current_principal_cents,
+        interestRateApy: mortgage.interest_rate_apy,
+        termMonths: mortgage.term_months,
+        startDate: mortgage.start_date,
+        scheduledPaymentCents: mortgage.scheduled_payment_cents,
+        paymentDay: mortgage.payment_day,
+        escrowEnabled: mortgage.escrow_enabled,
+        escrowTaxesCents: mortgage.escrow_taxes_cents,
+        escrowInsuranceCents: mortgage.escrow_insurance_cents,
+        escrowMipCents: mortgage.escrow_mip_cents,
+        escrowHoaCents: mortgage.escrow_hoa_cents,
+        notes: mortgage.notes,
+        active: mortgage.active,
+        splitMode: mortgage.split_mode,
+        createdAt: mortgage.created_at,
+        updatedAt: mortgage.updated_at,
         splits: splitsResult.rows.map(split => ({
-          personId: split.memberId,
-          value: split.value
+          id: split.id,
+          mortgageId: mortgage.id,
+          memberId: split.memberId,
+          value: split.value,
+          createdAt: split.created_at
         }))
       }
-
-      // Remove the _cents fields from the response
-      delete formattedMortgage.original_principal_cents
-      delete formattedMortgage.current_principal_cents
-      delete formattedMortgage.scheduled_payment_cents
-      delete formattedMortgage.escrow_taxes_cents
-      delete formattedMortgage.escrow_insurance_cents
-      delete formattedMortgage.escrow_mip_cents
-      delete formattedMortgage.escrow_hoa_cents
 
       mortgages.push(formattedMortgage)
     }
@@ -769,8 +776,34 @@ app.post('/api/mortgages', async (req, res) => {
       mortgage.splits = []
     }
 
+    // Convert to API format: camelCase field names with cent amounts
+    const formattedMortgage = {
+      id: mortgage.id,
+      name: mortgage.name,
+      lender: mortgage.lender,
+      isPrimary: mortgage.is_primary,
+      originalPrincipalCents: mortgage.original_principal_cents,
+      currentPrincipalCents: mortgage.current_principal_cents,
+      interestRateApy: mortgage.interest_rate_apy,
+      termMonths: mortgage.term_months,
+      startDate: mortgage.start_date,
+      scheduledPaymentCents: mortgage.scheduled_payment_cents,
+      paymentDay: mortgage.payment_day,
+      escrowEnabled: mortgage.escrow_enabled,
+      escrowTaxesCents: mortgage.escrow_taxes_cents,
+      escrowInsuranceCents: mortgage.escrow_insurance_cents,
+      escrowMipCents: mortgage.escrow_mip_cents,
+      escrowHoaCents: mortgage.escrow_hoa_cents,
+      notes: mortgage.notes,
+      active: mortgage.active,
+      splitMode: mortgage.split_mode,
+      createdAt: mortgage.created_at,
+      updatedAt: mortgage.updated_at,
+      splits: mortgage.splits
+    }
+
     await client.query('COMMIT')
-    res.json(mortgage)
+    res.json(formattedMortgage)
   } catch (error) {
     await client.query('ROLLBACK')
     console.error('Error creating mortgage:', error)
@@ -840,26 +873,31 @@ app.put('/api/mortgages/:id', async (req, res) => {
       mortgage.splits = []
     }
 
-    // Convert cents to dollars and ensure numeric types
+    // Convert to API format: camelCase field names with cent amounts
     const formattedMortgage = {
-      ...mortgage,
-      original_principal: Number((mortgage.original_principal_cents / 100).toFixed(2)),
-      current_principal: Number((mortgage.current_principal_cents / 100).toFixed(2)),
-      scheduled_payment: Number((mortgage.scheduled_payment_cents / 100).toFixed(2)),
-      escrow_taxes: mortgage.escrow_taxes_cents ? Number((mortgage.escrow_taxes_cents / 100).toFixed(2)) : null,
-      escrow_insurance: mortgage.escrow_insurance_cents ? Number((mortgage.escrow_insurance_cents / 100).toFixed(2)) : null,
-      escrow_mip: mortgage.escrow_mip_cents ? Number((mortgage.escrow_mip_cents / 100).toFixed(2)) : null,
-      escrow_hoa: mortgage.escrow_hoa_cents ? Number((mortgage.escrow_hoa_cents / 100).toFixed(2)) : null
+      id: mortgage.id,
+      name: mortgage.name,
+      lender: mortgage.lender,
+      isPrimary: mortgage.is_primary,
+      originalPrincipalCents: mortgage.original_principal_cents,
+      currentPrincipalCents: mortgage.current_principal_cents,
+      interestRateApy: mortgage.interest_rate_apy,
+      termMonths: mortgage.term_months,
+      startDate: mortgage.start_date,
+      scheduledPaymentCents: mortgage.scheduled_payment_cents,
+      paymentDay: mortgage.payment_day,
+      escrowEnabled: mortgage.escrow_enabled,
+      escrowTaxesCents: mortgage.escrow_taxes_cents,
+      escrowInsuranceCents: mortgage.escrow_insurance_cents,
+      escrowMipCents: mortgage.escrow_mip_cents,
+      escrowHoaCents: mortgage.escrow_hoa_cents,
+      notes: mortgage.notes,
+      active: mortgage.active,
+      splitMode: mortgage.split_mode,
+      createdAt: mortgage.created_at,
+      updatedAt: mortgage.updated_at,
+      splits: mortgage.splits
     }
-
-    // Remove the _cents fields from the response
-    delete formattedMortgage.original_principal_cents
-    delete formattedMortgage.current_principal_cents
-    delete formattedMortgage.scheduled_payment_cents
-    delete formattedMortgage.escrow_taxes_cents
-    delete formattedMortgage.escrow_insurance_cents
-    delete formattedMortgage.escrow_mip_cents
-    delete formattedMortgage.escrow_hoa_cents
 
     await client.query('COMMIT')
     res.json(formattedMortgage)

@@ -157,29 +157,45 @@ function mortgageToApiMortgage(mortgage: Mortgage): any {
 }
 
 function apiMortgageToMortgage(apiMortgage: ApiMortgage): Mortgage {
+  // Defensive type checking and safe conversion
+  const safeNumber = (value: any, fallback: number = 0): number => {
+    if (typeof value === 'number' && !isNaN(value)) return value
+    if (typeof value === 'string') {
+      const parsed = parseFloat(value)
+      return !isNaN(parsed) ? parsed : fallback
+    }
+    console.warn('Invalid numeric value for mortgage field:', value)
+    return fallback
+  }
+
+  const safeCentsTodollars = (cents: any, fallback: number = 0): number => {
+    const safeCents = safeNumber(cents, fallback * 100)
+    return safeCents / 100
+  }
+
   return {
-    id: apiMortgage.id,
-    name: apiMortgage.name,
+    id: apiMortgage.id || '',
+    name: apiMortgage.name || 'Unknown Mortgage',
     lender: apiMortgage.lender,
-    is_primary: apiMortgage.isPrimary,
-    original_principal: apiMortgage.originalPrincipalCents / 100,
-    current_principal: apiMortgage.currentPrincipalCents / 100,
-    interest_rate_apy: apiMortgage.interestRateApy,
-    term_months: apiMortgage.termMonths,
-    start_date: apiMortgage.startDate,
-    scheduled_payment: apiMortgage.scheduledPaymentCents / 100,
-    payment_day: apiMortgage.paymentDay,
-    escrow_enabled: apiMortgage.escrowEnabled,
-    escrow_taxes: apiMortgage.escrowTaxesCents ? apiMortgage.escrowTaxesCents / 100 : undefined,
-    escrow_insurance: apiMortgage.escrowInsuranceCents ? apiMortgage.escrowInsuranceCents / 100 : undefined,
-    escrow_mip: apiMortgage.escrowMipCents ? apiMortgage.escrowMipCents / 100 : undefined,
-    escrow_hoa: apiMortgage.escrowHoaCents ? apiMortgage.escrowHoaCents / 100 : undefined,
+    is_primary: Boolean(apiMortgage.isPrimary),
+    original_principal: safeCentsTodollars(apiMortgage.originalPrincipalCents, 0),
+    current_principal: safeCentsTodollars(apiMortgage.currentPrincipalCents, 0),
+    interest_rate_apy: safeNumber(apiMortgage.interestRateApy, 0),
+    term_months: safeNumber(apiMortgage.termMonths, 360),
+    start_date: apiMortgage.startDate || new Date().toISOString(),
+    scheduled_payment: safeCentsTodollars(apiMortgage.scheduledPaymentCents, 0),
+    payment_day: safeNumber(apiMortgage.paymentDay, 1),
+    escrow_enabled: Boolean(apiMortgage.escrowEnabled),
+    escrow_taxes: apiMortgage.escrowTaxesCents ? safeCentsTodollars(apiMortgage.escrowTaxesCents) : undefined,
+    escrow_insurance: apiMortgage.escrowInsuranceCents ? safeCentsTodollars(apiMortgage.escrowInsuranceCents) : undefined,
+    escrow_mip: apiMortgage.escrowMipCents ? safeCentsTodollars(apiMortgage.escrowMipCents) : undefined,
+    escrow_hoa: apiMortgage.escrowHoaCents ? safeCentsTodollars(apiMortgage.escrowHoaCents) : undefined,
     notes: apiMortgage.notes,
-    active: apiMortgage.active,
+    active: Boolean(apiMortgage.active),
     splitMode: apiMortgage.splitMode as any,
-    splits: apiMortgage.splits.map(split => ({
-      personId: split.memberId,
-      value: split.value
+    splits: (apiMortgage.splits || []).map(split => ({
+      personId: split.memberId || '',
+      value: safeNumber(split.value, 0)
     }))
   }
 }
@@ -374,18 +390,55 @@ export function useMortgages(): ApiHookResult<Mortgage> {
     try {
       setLoading(true)
       const apiMortgages = await apiClient.getMortgages()
-      setData(apiMortgages.map(apiMortgageToMortgage))
+
+      // Validate and safely convert API response
+      if (!Array.isArray(apiMortgages)) {
+        console.warn('Invalid mortgages response format:', apiMortgages)
+        setData([])
+        setWarning('Invalid mortgage data format received from server.')
+        return
+      }
+
+      const validMortgages = apiMortgages
+        .filter(mortgage => {
+          if (!mortgage || typeof mortgage !== 'object') {
+            console.warn('Invalid mortgage object:', mortgage)
+            return false
+          }
+          return true
+        })
+        .map(mortgage => {
+          try {
+            return apiMortgageToMortgage(mortgage)
+          } catch (conversionError) {
+            console.warn('Failed to convert mortgage:', mortgage, conversionError)
+            return null
+          }
+        })
+        .filter((mortgage): mortgage is Mortgage => mortgage !== null)
+
+      setData(validMortgages)
       setWarning(null)
+
+      if (validMortgages.length < apiMortgages.length) {
+        setWarning('Some mortgage data could not be loaded due to format issues.')
+      }
     } catch (err) {
-      setWarning('Unable to load mortgages from server. You can still add new mortgages.')
       console.warn('Mortgages fetch failed:', err)
+      setWarning('Unable to load mortgages from server. You can still add new mortgages.')
+      setData([]) // Ensure we have valid state
     } finally {
       setLoading(false)
     }
   }, [])
 
   const updateData = useCallback(async (newData: Mortgage[]) => {
-    setData(newData)
+    // Validate new data before setting
+    if (Array.isArray(newData)) {
+      setData(newData)
+    } else {
+      console.warn('Invalid data passed to updateData:', newData)
+    }
   }, [])
 
   useEffect(() => {
