@@ -12,7 +12,10 @@
       "mcp__jason-tan-swe-railway-mcp__project_list",
       "Read(//Users/to920d/Documents/Projects/TSO/**)",
       "Bash(npm install:*)",
-      "Bash(npm start)"
+      "Bash(npm start)",
+      "Bash(gh pr create:*)",
+      "Bash(node:*)",
+      "Bash(API_URL=https://family-growth-tracker-production.up.railway.app node test-database.ts)"
     ],
     "deny": [],
     "ask": []
