@@ -114,7 +114,7 @@ export const BillModal: React.FC<BillModalProps> = ({ isOpen, onClose, onSave, o
 
   // Calculate monthly payment for financing
   const monthlyPayment = useMemo(() => {
-    if (!isFinanced || !totalAmount || !interestRate || !financingTerm) return 0;
+    if (!isFinanced || !totalAmount || interestRate === '' || !financingTerm) return 0;
 
     const principal = totalAmount;
     const monthlyRate = (typeof interestRate === 'number' ? interestRate : 0) / 100 / 12;
@@ -162,7 +162,7 @@ export const BillModal: React.FC<BillModalProps> = ({ isOpen, onClose, onSave, o
 
     // Additional validation for financed expenses
     const financingValidation =
-      !interestRate ||
+      interestRate === '' ||
       !financingTerm ||
       purchaseDate === '' ||
       firstPaymentDate === '';

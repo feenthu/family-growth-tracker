@@ -9,7 +9,7 @@ function financedExpenseToApiFinancedExpense(expense: FinancedExpense): any {
     title: expense.title,
     description: expense.description,
     totalAmountCents: Math.round(expense.totalAmount * 100),
-    monthlyPaymentCents: Math.round(expense.monthlyPayment * 100),
+    // monthlyPaymentCents is calculated by the server, not sent from frontend
     interestRatePercent: expense.interestRatePercent,
     financingTermMonths: expense.financingTermMonths,
     purchaseDate: expense.purchaseDate,
