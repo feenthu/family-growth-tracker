@@ -125,8 +125,8 @@ export const FinancedExpenseModal: React.FC<FinancedExpenseModalProps> = ({
         )
       );
 
-      // For now, we only update local state since there's no unmark API endpoint
-      // In a full implementation, you'd call an API endpoint here
+      // Call the API to unmark the payment
+      await financedExpenseOperations.unmarkPaymentPaid(expense.id, payment.id);
 
       // Also update the parent component if callback provided
       if (onUpdate) {

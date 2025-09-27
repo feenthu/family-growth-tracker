@@ -380,6 +380,12 @@ class ApiClient {
       body: JSON.stringify(data),
     })
   }
+
+  async unmarkFinancedExpensePaymentPaid(expenseId: string, paymentId: string): Promise<ApiFinancedExpensePayment> {
+    return this.request(`/financed-expenses/${expenseId}/payments/${paymentId}/unmark-paid`, {
+      method: 'POST',
+    })
+  }
 }
 
 export const apiClient = new ApiClient()
