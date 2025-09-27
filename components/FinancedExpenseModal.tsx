@@ -10,6 +10,7 @@ interface FinancedExpenseModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (expense: FinancedExpense) => void;
+  onUpdate?: (expense: FinancedExpense) => void;
   onDelete?: (expenseId: string) => void;
   people: Person[];
   expense: FinancedExpense;
@@ -29,6 +30,7 @@ export const FinancedExpenseModal: React.FC<FinancedExpenseModalProps> = ({
   isOpen,
   onClose,
   onSave,
+  onUpdate,
   onDelete,
   people,
   expense,
@@ -69,9 +71,46 @@ export const FinancedExpenseModal: React.FC<FinancedExpenseModalProps> = ({
         payment.id,
         new Date().toISOString().split('T')[0]
       );
-      // Note: In a real app, this would trigger a refresh of the payments data
+
+      // Update local state for immediate feedback
+      if (onUpdate) {
+        const updatedExpense = {
+          ...expense,
+          payments: expense.payments.map(p =>
+            p.id === payment.id
+              ? { ...p, isPaid: true, paidDate: new Date().toISOString().split('T')[0] }
+              : p
+          )
+        };
+        onUpdate(updatedExpense);
+      }
     } catch (error) {
       console.error('Failed to mark payment as paid:', error);
+    } finally {
+      setMarkingPaymentId(null);
+    }
+  };
+
+  const handleUnmarkPaymentPaid = async (payment: FinancedExpensePayment) => {
+    if (!isAdminMode) return;
+
+    try {
+      setMarkingPaymentId(payment.id);
+      // For now, we'll need to add an API endpoint for unmarking payments
+      // But we can at least update the local state
+      if (onUpdate) {
+        const updatedExpense = {
+          ...expense,
+          payments: expense.payments.map(p =>
+            p.id === payment.id
+              ? { ...p, isPaid: false, paidDate: undefined }
+              : p
+          )
+        };
+        onUpdate(updatedExpense);
+      }
+    } catch (error) {
+      console.error('Failed to unmark payment:', error);
     } finally {
       setMarkingPaymentId(null);
     }
@@ -342,14 +381,26 @@ export const FinancedExpenseModal: React.FC<FinancedExpenseModalProps> = ({
                         </p>
                       </div>
 
-                      {!payment.isPaid && isAdminMode && (
-                        <button
-                          onClick={() => handleMarkPaymentPaid(payment)}
-                          disabled={markingPaymentId === payment.id}
-                          className="px-3 py-1 text-sm bg-indigo-100 hover:bg-indigo-200 dark:bg-indigo-900/50 dark:hover:bg-indigo-800/50 text-indigo-700 dark:text-indigo-300 rounded font-medium transition-colors disabled:opacity-50"
-                        >
-                          {markingPaymentId === payment.id ? 'Marking...' : 'Mark Paid'}
-                        </button>
+                      {isAdminMode && (
+                        <div className="flex gap-2">
+                          {!payment.isPaid ? (
+                            <button
+                              onClick={() => handleMarkPaymentPaid(payment)}
+                              disabled={markingPaymentId === payment.id}
+                              className="px-3 py-1 text-sm bg-indigo-100 hover:bg-indigo-200 dark:bg-indigo-900/50 dark:hover:bg-indigo-800/50 text-indigo-700 dark:text-indigo-300 rounded font-medium transition-colors disabled:opacity-50"
+                            >
+                              {markingPaymentId === payment.id ? 'Marking...' : 'Mark Paid'}
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleUnmarkPaymentPaid(payment)}
+                              disabled={markingPaymentId === payment.id}
+                              className="px-3 py-1 text-sm bg-red-100 hover:bg-red-200 dark:bg-red-900/50 dark:hover:bg-red-800/50 text-red-700 dark:text-red-300 rounded font-medium transition-colors disabled:opacity-50"
+                            >
+                              {markingPaymentId === payment.id ? 'Removing...' : 'Unmark Paid'}
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
