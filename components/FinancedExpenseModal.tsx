@@ -36,9 +36,17 @@ export const FinancedExpenseModal: React.FC<FinancedExpenseModalProps> = ({
   expense,
   isAdminMode = false
 }) => {
-  const [payments, paymentsLoading] = useFinancedExpensePayments(expense.id);
+  const [paymentsData, paymentsLoading] = useFinancedExpensePayments(expense.id);
+  const [payments, setPayments] = useState<FinancedExpensePayment[]>([]);
   const [isEditing, setIsEditing] = useState(false);
   const [markingPaymentId, setMarkingPaymentId] = useState<string | null>(null);
+
+  // Update local payments when data loads
+  useEffect(() => {
+    if (paymentsData) {
+      setPayments(paymentsData);
+    }
+  }, [paymentsData]);
 
   // Editing state
   const [editingExpense, setEditingExpense] = useState<FinancedExpense>(expense);
@@ -66,26 +74,37 @@ export const FinancedExpenseModal: React.FC<FinancedExpenseModalProps> = ({
 
     try {
       setMarkingPaymentId(payment.id);
+
+      // Update local payments state immediately for UI feedback
+      setPayments(prevPayments =>
+        prevPayments.map(p =>
+          p.id === payment.id
+            ? { ...p, isPaid: true, paidDate: new Date().toISOString().split('T')[0] }
+            : p
+        )
+      );
+
       await financedExpenseOperations.markPaymentPaid(
         expense.id,
         payment.id,
         new Date().toISOString().split('T')[0]
       );
 
-      // Update local state for immediate feedback
+      // Also update the parent component if callback provided
       if (onUpdate) {
-        const updatedExpense = {
-          ...expense,
-          payments: expense.payments.map(p =>
-            p.id === payment.id
-              ? { ...p, isPaid: true, paidDate: new Date().toISOString().split('T')[0] }
-              : p
-          )
-        };
+        const updatedExpense = { ...expense };
         onUpdate(updatedExpense);
       }
     } catch (error) {
       console.error('Failed to mark payment as paid:', error);
+      // Revert local state on error
+      setPayments(prevPayments =>
+        prevPayments.map(p =>
+          p.id === payment.id
+            ? { ...p, isPaid: false, paidDate: undefined }
+            : p
+        )
+      );
     } finally {
       setMarkingPaymentId(null);
     }
@@ -96,21 +115,34 @@ export const FinancedExpenseModal: React.FC<FinancedExpenseModalProps> = ({
 
     try {
       setMarkingPaymentId(payment.id);
-      // For now, we'll need to add an API endpoint for unmarking payments
-      // But we can at least update the local state
+
+      // Update local payments state immediately for UI feedback
+      setPayments(prevPayments =>
+        prevPayments.map(p =>
+          p.id === payment.id
+            ? { ...p, isPaid: false, paidDate: undefined }
+            : p
+        )
+      );
+
+      // For now, we only update local state since there's no unmark API endpoint
+      // In a full implementation, you'd call an API endpoint here
+
+      // Also update the parent component if callback provided
       if (onUpdate) {
-        const updatedExpense = {
-          ...expense,
-          payments: expense.payments.map(p =>
-            p.id === payment.id
-              ? { ...p, isPaid: false, paidDate: undefined }
-              : p
-          )
-        };
+        const updatedExpense = { ...expense };
         onUpdate(updatedExpense);
       }
     } catch (error) {
       console.error('Failed to unmark payment:', error);
+      // Revert local state on error
+      setPayments(prevPayments =>
+        prevPayments.map(p =>
+          p.id === payment.id
+            ? { ...p, isPaid: true, paidDate: payment.paidDate }
+            : p
+        )
+      );
     } finally {
       setMarkingPaymentId(null);
     }
