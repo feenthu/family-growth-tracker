@@ -170,5 +170,10 @@ export const financedExpenseOperations = {
   async markPaymentPaid(expenseId: string, paymentId: string, paidDate: string): Promise<FinancedExpensePayment> {
     const apiPayment = await apiClient.markFinancedExpensePaymentPaid(expenseId, paymentId, { paidDate })
     return apiFinancedExpensePaymentToFinancedExpensePayment(apiPayment)
+  },
+
+  async unmarkPaymentPaid(expenseId: string, paymentId: string): Promise<FinancedExpensePayment> {
+    const apiPayment = await apiClient.unmarkFinancedExpensePaymentPaid(expenseId, paymentId)
+    return apiFinancedExpensePaymentToFinancedExpensePayment(apiPayment)
   }
 }
