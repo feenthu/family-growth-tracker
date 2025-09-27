@@ -195,6 +195,7 @@ export const FinancedExpenseManager: React.FC<FinancedExpenseManagerProps> = ({
           isOpen={isModalOpen}
           onClose={closeModal}
           onSave={handleSave}
+          onUpdate={onUpdateFinancedExpense}
           onDelete={handleDelete}
           people={people}
           expense={selectedExpense}
