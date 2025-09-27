@@ -127,10 +127,10 @@ export const FinancedExpenseManager: React.FC<FinancedExpenseManagerProps> = ({
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                         <span className="text-sm text-slate-600 dark:text-slate-400">Split among:</span>
-                        <div className="flex items-center gap-1">
+                        <div className="flex flex-wrap items-center gap-1">
                           {splitAmounts.map((split) => {
                             const person = people.find(p => p.id === split.personId);
                             if (!person || split.amount === 0) return null;
@@ -146,7 +146,7 @@ export const FinancedExpenseManager: React.FC<FinancedExpenseManagerProps> = ({
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 self-start sm:self-auto">
                         <button
                           onClick={() => openModal(expense)}
                           className="p-2 text-indigo-600 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 rounded-lg transition-colors"
