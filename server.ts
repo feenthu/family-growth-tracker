@@ -1292,10 +1292,7 @@ app.put('/api/financed-expenses/:id', async (req, res) => {
       isActive, splitMode, splits
     } = req.body;
 
-    // Validation
-    if (!title) {
-      return res.status(400).json({ error: 'Title is required' });
-    }
+    // Validation - title is optional for updates
 
     if (totalAmountCents !== undefined && totalAmountCents <= 0) {
       return res.status(400).json({ error: 'Total amount must be greater than 0' });
