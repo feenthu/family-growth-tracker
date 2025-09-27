@@ -1076,7 +1076,10 @@ app.get('/api/financed-expenses', async (req, res) => {
         splitMode: expense.split_mode,
         createdAt: expense.created_at,
         updatedAt: expense.updated_at,
-        splits: splitsResult.rows,
+        splits: splitsResult.rows.map(split => ({
+          ...split,
+          value: expense.split_mode === 'amount' ? split.value / 100 : split.value
+        })),
         paymentSummary: {
           totalPayments: parseInt(paymentSummary.total_payments),
           paidPayments: parseInt(paymentSummary.paid_payments),
@@ -1154,15 +1157,26 @@ app.post('/api/financed-expenses', async (req, res) => {
       const insertedSplits = [];
       if (splits && splits.length > 0) {
         for (const split of splits) {
+          // Convert split value based on split mode
+          let splitValue = split.value;
+          if (splitMode === 'amount') {
+            // For amount splits, convert dollars to cents
+            splitValue = Math.round(split.value * 100);
+          }
+          // For percent and shares, use the value as-is (whole numbers)
+
           const splitResult = await client.query(`
             INSERT INTO financed_expense_splits (financed_expense_id, member_id, value)
             VALUES ($1, $2, $3)
             RETURNING id, member_id as "memberId", value
-          `, [expense.id, split.memberId, split.value]);
+          `, [expense.id, split.memberId, splitValue]);
           insertedSplits.push(splitResult.rows[0]);
         }
       }
-      expense.splits = insertedSplits;
+      expense.splits = insertedSplits.map(split => ({
+        ...split,
+        value: splitMode === 'amount' ? split.value / 100 : split.value
+      }));
 
       // Generate payment schedule
       const paymentSchedule = generatePaymentSchedule(
@@ -1258,7 +1272,10 @@ app.get('/api/financed-expenses/:id', async (req, res) => {
       splitMode: expense.split_mode,
       createdAt: expense.created_at,
       updatedAt: expense.updated_at,
-      splits: splitsResult.rows,
+      splits: splitsResult.rows.map(split => ({
+        ...split,
+        value: expense.split_mode === 'amount' ? split.value / 100 : split.value
+      })),
       payments: paymentsResult.rows.map(payment => ({
         id: payment.id,
         paymentNumber: payment.payment_number,
@@ -1371,14 +1388,25 @@ app.put('/api/financed-expenses/:id', async (req, res) => {
 
         const insertedSplits = [];
         for (const split of splits) {
+          // Convert split value based on split mode
+          let splitValue = split.value;
+          if (splitMode === 'amount') {
+            // For amount splits, convert dollars to cents
+            splitValue = Math.round(split.value * 100);
+          }
+          // For percent and shares, use the value as-is (whole numbers)
+
           const splitResult = await client.query(`
             INSERT INTO financed_expense_splits (financed_expense_id, member_id, value)
             VALUES ($1, $2, $3)
             RETURNING id, member_id as "memberId", value
-          `, [id, split.memberId, split.value]);
+          `, [id, split.memberId, splitValue]);
           insertedSplits.push(splitResult.rows[0]);
         }
-        expense.splits = insertedSplits;
+        expense.splits = insertedSplits.map(split => ({
+          ...split,
+          value: splitMode === 'amount' ? split.value / 100 : split.value
+        }));
       } else {
         // Get existing splits
         const splitsResult = await client.query(`
@@ -1386,7 +1414,10 @@ app.put('/api/financed-expenses/:id', async (req, res) => {
           FROM financed_expense_splits
           WHERE financed_expense_id = $1
         `, [id]);
-        expense.splits = splitsResult.rows;
+        expense.splits = splitsResult.rows.map(split => ({
+          ...split,
+          value: expense.split_mode === 'amount' ? split.value / 100 : split.value
+        }));
       }
 
       // Recalculate payment schedule if needed
