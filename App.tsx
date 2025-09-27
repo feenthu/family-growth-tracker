@@ -14,6 +14,7 @@ import { WarningBanner } from './components/WarningBanner';
 import { calculateSplitAmounts, calculatePaymentBreakdown, resolveItemCycle } from './utils/calculations';
 import { FamilyView } from './components/FamilyView';
 import { MortgageManager } from './components/MortgageManager';
+import { FinancedExpenseManager } from './components/FinancedExpenseManager';
 import { PasswordModal } from './components/PasswordModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
@@ -486,6 +487,13 @@ const App: React.FC = () => {
                       // FIX: Pass `closeRecurringBillModal` to the `closeModal` prop instead of the undefined `closeModal`.
                       closeModal={closeRecurringBillModal}
                       editingRecurringBill={editingRecurringBill}
+                  />
+                  <FinancedExpenseManager
+                    financedExpenses={financedExpenses}
+                    people={people}
+                    onSaveFinancedExpense={handleSaveFinancedExpense}
+                    onDeleteFinancedExpense={handleDeleteFinancedExpense}
+                    onUpdateFinancedExpense={handleUpdateFinancedExpense}
                   />
                 </div>
                 <div className="lg:col-span-1">
