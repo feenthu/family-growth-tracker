@@ -125,8 +125,16 @@ export const FinancedExpenseModal: React.FC<FinancedExpenseModalProps> = ({
         )
       );
 
-      // Call the API to unmark the payment
-      await financedExpenseOperations.unmarkPaymentPaid(expense.id, payment.id);
+      // Call the API to unmark the payment (fallback to local-only if endpoint doesn't exist)
+      try {
+        await financedExpenseOperations.unmarkPaymentPaid(expense.id, payment.id);
+      } catch (apiError: any) {
+        // If the API endpoint doesn't exist (404), continue with local-only changes
+        if (apiError.message !== 'API endpoint not found') {
+          throw apiError;
+        }
+        console.warn('Unmark payment API not available, using local-only changes');
+      }
 
       // Also update the parent component if callback provided
       if (onUpdate) {
