@@ -266,7 +266,15 @@ export const BillModal: React.FC<BillModalProps> = ({ isOpen, onClose, onSave, o
                   </div>
                   <div>
                     <label htmlFor="interestRate" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Interest Rate (%)</label>
-                    <input type="number" id="interestRate" value={interestRate} onChange={e => setInterestRate(parseFloat(e.target.value) || '')} required min="0" step="0.01" className="mt-1 block w-full px-3 py-2 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" />
+                    <input type="number" id="interestRate" value={interestRate} onChange={e => {
+                      const value = e.target.value;
+                      if (value === '') {
+                        setInterestRate('');
+                      } else {
+                        const parsed = parseFloat(value);
+                        setInterestRate(isNaN(parsed) ? '' : parsed);
+                      }
+                    }} required min="0" step="0.01" className="mt-1 block w-full px-3 py-2 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
