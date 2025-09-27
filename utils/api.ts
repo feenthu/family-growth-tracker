@@ -186,10 +186,49 @@ export interface ApiFinancedExpensePayment {
   createdAt: string
 }
 
-// Complete API response that includes expense with all payments
+// Complete API response that includes expense with all payments (flat structure)
 export interface ApiFinancedExpenseComplete {
-  expense: ApiFinancedExpense
-  payments: ApiFinancedExpensePayment[]
+  // Expense properties (flattened)
+  id: string
+  title: string
+  description?: string
+  totalAmountCents: number
+  monthlyPaymentCents: number
+  interestRatePercent: number
+  financingTermMonths: number
+  purchaseDate: string
+  firstPaymentDate: string
+  isActive: boolean
+  splitMode: string
+  createdAt: string
+  updatedAt: string
+  splits: ApiFinancedExpenseSplit[]
+
+  // Embedded payments and summary
+  payments: {
+    id: string
+    paymentNumber: number
+    dueDate: string
+    amountCents: number
+    principalCents: number
+    interestCents: number
+    isPaid: boolean
+    paidDate?: string
+    billId?: string
+    createdAt?: string
+  }[]
+
+  summary: {
+    totalPayments: number
+    paidPayments: number
+    totalPaidCents: number
+    remainingBalanceCents: number
+    nextDueDate?: string
+    paymentsRemaining: number
+    progressPercent: number
+    isOverdue: boolean
+    nextPaymentAmount?: number
+  }
 }
 
 class ApiClient {

@@ -133,9 +133,50 @@ export function useFinancedExpenseCompleteQuery(id: string) {
     queryFn: async (): Promise<FinancedExpenseComplete> => {
       try {
         const apiData = await apiClient.getFinancedExpenseComplete(id)
+
+        // Add validation for the API response structure
+        if (!apiData) {
+          throw new Error(`No data returned for financed expense ${id}`)
+        }
+
+        if (!apiData.id) {
+          throw new Error(`Invalid expense data structure for financed expense ${id}`)
+        }
+
+        // The API returns a flat structure, not nested with { expense: ..., payments: ... }
+        // Convert the flat API response to the expected structure
+        const expense: ApiFinancedExpense = {
+          id: apiData.id,
+          title: apiData.title,
+          description: apiData.description,
+          totalAmountCents: apiData.totalAmountCents,
+          monthlyPaymentCents: apiData.monthlyPaymentCents,
+          interestRatePercent: apiData.interestRatePercent,
+          financingTermMonths: apiData.financingTermMonths,
+          purchaseDate: apiData.purchaseDate,
+          firstPaymentDate: apiData.firstPaymentDate,
+          isActive: apiData.isActive,
+          splitMode: apiData.splitMode,
+          createdAt: apiData.createdAt,
+          updatedAt: apiData.updatedAt,
+          splits: apiData.splits || []
+        }
+
         return {
-          expense: apiFinancedExpenseToFinancedExpense(apiData.expense),
-          payments: apiData.payments.map(apiFinancedExpensePaymentToFinancedExpensePayment)
+          expense: apiFinancedExpenseToFinancedExpense(expense),
+          payments: (apiData.payments || []).map(payment => ({
+            id: payment.id,
+            financedExpenseId: id,
+            paymentNumber: payment.paymentNumber,
+            dueDate: payment.dueDate,
+            amountCents: payment.amountCents,
+            principalCents: payment.principalCents,
+            interestCents: payment.interestCents,
+            isPaid: payment.isPaid,
+            paidDate: payment.paidDate,
+            billId: payment.billId,
+            createdAt: payment.createdAt || new Date().toISOString()
+          })).map(apiFinancedExpensePaymentToFinancedExpensePayment)
         }
       } catch (error) {
         console.error(`Failed to fetch financed expense ${id}:`, error)
