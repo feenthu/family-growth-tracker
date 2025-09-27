@@ -20,7 +20,11 @@
       "Bash(git fetch:*)",
       "Bash(npx tsc:*)",
       "Bash(tsx test-frontend-components.ts:*)",
-      "Bash(npx tsx:*)"
+      "Bash(npx tsx:*)",
+      "Bash(git config:*)",
+      "Bash(git remote get-url:*)",
+      "Bash(cmdkey:*)",
+      "Bash(npm run dev:*)"
     ],
     "deny": [],
     "ask": []

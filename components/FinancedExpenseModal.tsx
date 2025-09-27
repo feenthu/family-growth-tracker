@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { FinancedExpense, FinancedExpensePayment, Person, Split, SplitMode } from '../types';
-import { useFinancedExpensePayments, financedExpenseOperations } from '../hooks/useFinancedExpenses';
+import { useFinancedExpenseCompleteQuery, useFinancedExpenseMutations } from '../hooks/useFinancedExpensesQuery';
 import { calculateSplitAmounts } from '../utils/calculations';
 import { Avatar } from './Avatar';
 import { CheckCircleIcon, ClockIcon } from './Icons';
@@ -36,27 +36,25 @@ export const FinancedExpenseModal: React.FC<FinancedExpenseModalProps> = ({
   expense,
   isAdminMode = false
 }) => {
-  const [paymentsData, paymentsLoading] = useFinancedExpensePayments(expense.id);
-  const [payments, setPayments] = useState<FinancedExpensePayment[]>([]);
+  // Use React Query to get complete expense data with payments
+  const { data: expenseData, isLoading: dataLoading, error } = useFinancedExpenseCompleteQuery(expense.id);
+  const { markPaymentPaid, unmarkPaymentPaid, updateFinancedExpense } = useFinancedExpenseMutations();
+
   const [isEditing, setIsEditing] = useState(false);
-  const [markingPaymentId, setMarkingPaymentId] = useState<string | null>(null);
 
-  // Update local payments when data loads
-  useEffect(() => {
-    if (paymentsData) {
-      setPayments(paymentsData);
-    }
-  }, [paymentsData]);
+  // Get payments from the complete query data
+  const payments = expenseData?.payments || [];
+  const currentExpense = expenseData?.expense || expense;
 
-  // Editing state
-  const [editingExpense, setEditingExpense] = useState<FinancedExpense>(expense);
+  // Editing state - use current expense from query data
+  const [editingExpense, setEditingExpense] = useState<FinancedExpense>(currentExpense);
 
   useEffect(() => {
-    setEditingExpense(expense);
-  }, [expense]);
+    setEditingExpense(currentExpense);
+  }, [currentExpense]);
 
-  // Calculate payment progress
-  const totalPayments = expense.financingTermMonths;
+  // Calculate payment progress using current expense data
+  const totalPayments = currentExpense.financingTermMonths;
   const paidPayments = payments.filter(p => p.isPaid).length;
   const progressPercent = (paidPayments / totalPayments) * 100;
 
@@ -64,49 +62,27 @@ export const FinancedExpenseModal: React.FC<FinancedExpenseModalProps> = ({
   const totalPaid = payments.filter(p => p.isPaid).reduce((sum, p) => sum + p.amount, 0);
   const totalInterestPaid = payments.filter(p => p.isPaid).reduce((sum, p) => sum + p.interest, 0);
   const totalPrincipalPaid = payments.filter(p => p.isPaid).reduce((sum, p) => sum + p.principal, 0);
-  const remainingPrincipal = expense.totalAmount - totalPrincipalPaid;
+  const remainingPrincipal = currentExpense.totalAmount - totalPrincipalPaid;
 
-  // Split calculations
-  const splitAmounts = calculateSplitAmounts(expense, people);
+  // Split calculations using current expense data
+  const splitAmounts = calculateSplitAmounts(currentExpense, people);
 
   const handleMarkPaymentPaid = async (payment: FinancedExpensePayment) => {
     if (!isAdminMode) return;
 
     try {
-      setMarkingPaymentId(payment.id);
+      await markPaymentPaid.mutateAsync({
+        expenseId: expense.id,
+        paymentId: payment.id,
+        paidDate: new Date().toISOString().split('T')[0]
+      });
 
-      // Update local payments state immediately for UI feedback
-      setPayments(prevPayments =>
-        prevPayments.map(p =>
-          p.id === payment.id
-            ? { ...p, isPaid: true, paidDate: new Date().toISOString().split('T')[0] }
-            : p
-        )
-      );
-
-      await financedExpenseOperations.markPaymentPaid(
-        expense.id,
-        payment.id,
-        new Date().toISOString().split('T')[0]
-      );
-
-      // Also update the parent component if callback provided
+      // Update parent component if callback provided
       if (onUpdate) {
-        const updatedExpense = { ...expense };
-        onUpdate(updatedExpense);
+        onUpdate(currentExpense);
       }
     } catch (error) {
       console.error('Failed to mark payment as paid:', error);
-      // Revert local state on error
-      setPayments(prevPayments =>
-        prevPayments.map(p =>
-          p.id === payment.id
-            ? { ...p, isPaid: false, paidDate: undefined }
-            : p
-        )
-      );
-    } finally {
-      setMarkingPaymentId(null);
     }
   };
 
@@ -114,52 +90,32 @@ export const FinancedExpenseModal: React.FC<FinancedExpenseModalProps> = ({
     if (!isAdminMode) return;
 
     try {
-      setMarkingPaymentId(payment.id);
+      await unmarkPaymentPaid.mutateAsync({
+        expenseId: expense.id,
+        paymentId: payment.id
+      });
 
-      // Update local payments state immediately for UI feedback
-      setPayments(prevPayments =>
-        prevPayments.map(p =>
-          p.id === payment.id
-            ? { ...p, isPaid: false, paidDate: undefined }
-            : p
-        )
-      );
-
-      // Call the API to unmark the payment (fallback to local-only if endpoint doesn't exist)
-      try {
-        await financedExpenseOperations.unmarkPaymentPaid(expense.id, payment.id);
-      } catch (apiError: any) {
-        // If the API endpoint doesn't exist (404), continue with local-only changes
-        if (apiError.message !== 'API endpoint not found') {
-          throw apiError;
-        }
-        console.warn('Unmark payment API not available, using local-only changes');
-      }
-
-      // Also update the parent component if callback provided
+      // Update parent component if callback provided
       if (onUpdate) {
-        const updatedExpense = { ...expense };
-        onUpdate(updatedExpense);
+        onUpdate(currentExpense);
       }
     } catch (error) {
       console.error('Failed to unmark payment:', error);
-      // Revert local state on error
-      setPayments(prevPayments =>
-        prevPayments.map(p =>
-          p.id === payment.id
-            ? { ...p, isPaid: true, paidDate: payment.paidDate }
-            : p
-        )
-      );
-    } finally {
-      setMarkingPaymentId(null);
     }
   };
 
   const handleSaveChanges = async () => {
     try {
-      await onSave(editingExpense);
+      await updateFinancedExpense.mutateAsync({
+        id: expense.id,
+        expense: editingExpense
+      });
       setIsEditing(false);
+
+      // Update parent component if callback provided
+      if (onUpdate) {
+        onUpdate(editingExpense);
+      }
     } catch (error) {
       console.error('Failed to save changes:', error);
     }
@@ -196,7 +152,7 @@ export const FinancedExpenseModal: React.FC<FinancedExpenseModalProps> = ({
             <div className="flex items-center gap-3">
               <div className="w-4 h-4 rounded-full bg-purple-500"></div>
               <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-200">
-                {expense.title}
+                {currentExpense.title}
               </h2>
               <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300">
                 Financed Expense
@@ -240,7 +196,7 @@ export const FinancedExpenseModal: React.FC<FinancedExpenseModalProps> = ({
                 {formatCurrency(totalPaid)}
               </p>
               <p className="text-sm text-slate-600 dark:text-slate-300">
-                of {formatCurrency(expense.totalAmount)}
+                of {formatCurrency(currentExpense.totalAmount)}
               </p>
             </div>
 
@@ -347,7 +303,7 @@ export const FinancedExpenseModal: React.FC<FinancedExpenseModalProps> = ({
             /* Current Split Display */
             <div className="mb-6">
               <h3 className="text-lg font-medium text-slate-800 dark:text-slate-200 mb-3">
-                Monthly Payment Split ({formatCurrency(expense.monthlyPayment)})
+                Monthly Payment Split ({formatCurrency(currentExpense.monthlyPayment)})
               </h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {splitAmounts.map(split => {
@@ -376,7 +332,7 @@ export const FinancedExpenseModal: React.FC<FinancedExpenseModalProps> = ({
               Payment Schedule
             </h3>
 
-            {paymentsLoading ? (
+            {dataLoading ? (
               <div className="flex justify-center py-8">
                 <LoadingSpinner />
               </div>
@@ -426,18 +382,18 @@ export const FinancedExpenseModal: React.FC<FinancedExpenseModalProps> = ({
                           {!payment.isPaid ? (
                             <button
                               onClick={() => handleMarkPaymentPaid(payment)}
-                              disabled={markingPaymentId === payment.id}
+                              disabled={markPaymentPaid.isPending}
                               className="px-3 py-1 text-sm bg-indigo-100 hover:bg-indigo-200 dark:bg-indigo-900/50 dark:hover:bg-indigo-800/50 text-indigo-700 dark:text-indigo-300 rounded font-medium transition-colors disabled:opacity-50"
                             >
-                              {markingPaymentId === payment.id ? 'Marking...' : 'Mark Paid'}
+                              {markPaymentPaid.isPending ? 'Marking...' : 'Mark Paid'}
                             </button>
                           ) : (
                             <button
                               onClick={() => handleUnmarkPaymentPaid(payment)}
-                              disabled={markingPaymentId === payment.id}
+                              disabled={unmarkPaymentPaid.isPending}
                               className="px-3 py-1 text-sm bg-red-100 hover:bg-red-200 dark:bg-red-900/50 dark:hover:bg-red-800/50 text-red-700 dark:text-red-300 rounded font-medium transition-colors disabled:opacity-50"
                             >
-                              {markingPaymentId === payment.id ? 'Removing...' : 'Unmark Paid'}
+                              {unmarkPaymentPaid.isPending ? 'Removing...' : 'Unmark Paid'}
                             </button>
                           )}
                         </div>
@@ -457,25 +413,25 @@ export const FinancedExpenseModal: React.FC<FinancedExpenseModalProps> = ({
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
               <div>
                 <span className="text-slate-500 dark:text-slate-400">Purchase Date:</span>
-                <p className="font-medium">{formatDate(expense.purchaseDate)}</p>
+                <p className="font-medium">{formatDate(currentExpense.purchaseDate)}</p>
               </div>
               <div>
                 <span className="text-slate-500 dark:text-slate-400">First Payment:</span>
-                <p className="font-medium">{formatDate(expense.firstPaymentDate)}</p>
+                <p className="font-medium">{formatDate(currentExpense.firstPaymentDate)}</p>
               </div>
               <div>
                 <span className="text-slate-500 dark:text-slate-400">Interest Rate:</span>
-                <p className="font-medium">{expense.interestRatePercent}%</p>
+                <p className="font-medium">{currentExpense.interestRatePercent}%</p>
               </div>
               <div>
                 <span className="text-slate-500 dark:text-slate-400">Term:</span>
-                <p className="font-medium">{expense.financingTermMonths} months</p>
+                <p className="font-medium">{currentExpense.financingTermMonths} months</p>
               </div>
             </div>
-            {expense.description && (
+            {currentExpense.description && (
               <div className="mt-3">
                 <span className="text-slate-500 dark:text-slate-400">Description:</span>
-                <p className="font-medium mt-1">{expense.description}</p>
+                <p className="font-medium mt-1">{currentExpense.description}</p>
               </div>
             )}
           </div>

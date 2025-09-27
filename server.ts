@@ -1301,26 +1301,87 @@ app.get('/api/financed-expenses/:id', async (req, res) => {
 });
 
 app.put('/api/financed-expenses/:id', async (req, res) => {
+  const { id } = req.params;
   try {
-    const { id } = req.params;
     const {
       title, description, totalAmountCents, interestRatePercent,
       financingTermMonths, purchaseDate, firstPaymentDate,
       isActive, splitMode, splits
     } = req.body;
 
-    // Validation - title is optional for updates
+    console.log('PUT /api/financed-expenses/:id called with:', {
+      id,
+      body: req.body,
+      bodyKeys: Object.keys(req.body),
+      splitMode,
+      splitsLength: splits?.length
+    });
 
-    if (totalAmountCents !== undefined && totalAmountCents <= 0) {
-      return res.status(400).json({ error: 'Total amount must be greater than 0' });
+    // Enhanced validation
+    if (totalAmountCents !== undefined) {
+      if (typeof totalAmountCents !== 'number' || isNaN(totalAmountCents)) {
+        return res.status(400).json({ error: 'Total amount must be a valid number' });
+      }
+      if (totalAmountCents <= 0) {
+        return res.status(400).json({ error: 'Total amount must be greater than 0' });
+      }
     }
 
-    if (financingTermMonths !== undefined && financingTermMonths <= 0) {
-      return res.status(400).json({ error: 'Financing term must be greater than 0' });
+    if (financingTermMonths !== undefined) {
+      if (typeof financingTermMonths !== 'number' || isNaN(financingTermMonths)) {
+        return res.status(400).json({ error: 'Financing term must be a valid number' });
+      }
+      if (financingTermMonths <= 0 || !Number.isInteger(financingTermMonths)) {
+        return res.status(400).json({ error: 'Financing term must be a positive integer' });
+      }
     }
 
-    if (interestRatePercent !== undefined && interestRatePercent < 0) {
-      return res.status(400).json({ error: 'Interest rate cannot be negative' });
+    if (interestRatePercent !== undefined) {
+      if (typeof interestRatePercent !== 'number' || isNaN(interestRatePercent)) {
+        return res.status(400).json({ error: 'Interest rate must be a valid number' });
+      }
+      if (interestRatePercent < 0) {
+        return res.status(400).json({ error: 'Interest rate cannot be negative' });
+      }
+    }
+
+    // Validate date formats if provided
+    if (purchaseDate !== undefined) {
+      const purchaseDateObj = new Date(purchaseDate);
+      if (isNaN(purchaseDateObj.getTime())) {
+        return res.status(400).json({ error: 'Purchase date must be a valid date' });
+      }
+    }
+
+    if (firstPaymentDate !== undefined) {
+      const firstPaymentDateObj = new Date(firstPaymentDate);
+      if (isNaN(firstPaymentDateObj.getTime())) {
+        return res.status(400).json({ error: 'First payment date must be a valid date' });
+      }
+    }
+
+    // Validate splits if provided
+    if (splits !== undefined) {
+      if (!Array.isArray(splits)) {
+        return res.status(400).json({ error: 'Splits must be an array' });
+      }
+
+      if (splitMode === undefined) {
+        return res.status(400).json({ error: 'Split mode is required when updating splits' });
+      }
+
+      if (!['amount', 'percent', 'shares'].includes(splitMode)) {
+        return res.status(400).json({ error: 'Split mode must be amount, percent, or shares' });
+      }
+
+      for (const split of splits) {
+        if (!split.memberId || typeof split.value !== 'number' || isNaN(split.value)) {
+          return res.status(400).json({ error: 'Each split must have a valid memberId and numeric value' });
+        }
+        if (split.value <= 0) {
+          return res.status(400).json({ error: 'Split values must be greater than 0' });
+        }
+      }
     }
 
     const client = await pool.connect();
@@ -1384,17 +1445,21 @@ app.put('/api/financed-expenses/:id', async (req, res) => {
 
       // Update splits if provided
       if (splits !== undefined) {
+        console.log('Updating splits:', { splits, splitMode: expense.splitMode });
+
         await client.query('DELETE FROM financed_expense_splits WHERE financed_expense_id = $1', [id]);
 
         const insertedSplits = [];
         for (const split of splits) {
           // Convert split value based on split mode
           let splitValue = split.value;
-          if (splitMode === 'amount') {
+          if (expense.splitMode === 'amount') {
             // For amount splits, convert dollars to cents
             splitValue = Math.round(split.value * 100);
           }
           // For percent and shares, use the value as-is (whole numbers)
+
+          console.log('Inserting split:', { memberId: split.memberId, originalValue: split.value, convertedValue: splitValue });
 
           const splitResult = await client.query(`
             INSERT INTO financed_expense_splits (financed_expense_id, member_id, value)
@@ -1405,7 +1470,7 @@ app.put('/api/financed-expenses/:id', async (req, res) => {
         }
         expense.splits = insertedSplits.map(split => ({
           ...split,
-          value: splitMode === 'amount' ? split.value / 100 : split.value
+          value: expense.splitMode === 'amount' ? split.value / 100 : split.value
         }));
       } else {
         // Get existing splits
@@ -1416,17 +1481,25 @@ app.put('/api/financed-expenses/:id', async (req, res) => {
         `, [id]);
         expense.splits = splitsResult.rows.map(split => ({
           ...split,
-          value: expense.split_mode === 'amount' ? split.value / 100 : split.value
+          value: expense.splitMode === 'amount' ? split.value / 100 : split.value
         }));
       }
 
       // Recalculate payment schedule if needed
       if (needsRecalculation) {
+        console.log('Recalculating payment schedule due to changes in:', {
+          totalAmountChanged: totalAmountCents !== undefined && totalAmountCents !== currentExpense.total_amount_cents,
+          interestRateChanged: interestRatePercent !== undefined && interestRatePercent !== parseFloat(currentExpense.interest_rate_percent),
+          termChanged: financingTermMonths !== undefined && financingTermMonths !== currentExpense.financing_term_months,
+          firstPaymentDateChanged: firstPaymentDate !== undefined && firstPaymentDate !== currentExpense.first_payment_date
+        });
+
         // Delete existing unpaid payments
-        await client.query(
+        const deleteResult = await client.query(
           'DELETE FROM financed_expense_payments WHERE financed_expense_id = $1 AND is_paid = false',
           [id]
         );
+        console.log('Deleted unpaid payments:', deleteResult.rowCount);
 
         // Get the number of paid payments to determine starting payment number
         const paidPaymentsResult = await client.query(
@@ -1436,41 +1509,239 @@ app.put('/api/financed-expenses/:id', async (req, res) => {
         const paidPaymentsCount = parseInt(paidPaymentsResult.rows[0].count);
         const remainingTermMonths = finalFinancingTermMonths - paidPaymentsCount;
 
+        console.log('Payment schedule calculation:', {
+          paidPaymentsCount,
+          finalFinancingTermMonths,
+          remainingTermMonths,
+          finalTotalAmountCents,
+          finalInterestRatePercent,
+          finalFirstPaymentDate
+        });
+
         if (remainingTermMonths > 0) {
           // Calculate remaining principal
           const totalPaidResult = await client.query(
-            'SELECT SUM(principal_cents) as total_paid FROM financed_expense_payments WHERE financed_expense_id = $1 AND is_paid = true',
+            'SELECT COALESCE(SUM(principal_cents), 0) as total_paid FROM financed_expense_payments WHERE financed_expense_id = $1 AND is_paid = true',
             [id]
           );
           const totalPaidPrincipal = parseInt(totalPaidResult.rows[0].total_paid || '0');
           const remainingPrincipal = finalTotalAmountCents - totalPaidPrincipal;
 
-          // Generate new payment schedule for remaining payments
-          const nextPaymentDate = new Date(finalFirstPaymentDate);
-          nextPaymentDate.setMonth(nextPaymentDate.getMonth() + paidPaymentsCount);
+          console.log('Principal calculation:', {
+            totalPaidPrincipal,
+            remainingPrincipal
+          });
 
-          const newPaymentSchedule = generatePaymentSchedule(
-            remainingPrincipal,
-            finalInterestRatePercent,
-            remainingTermMonths,
-            nextPaymentDate.toISOString().split('T')[0]
-          );
+          if (remainingPrincipal <= 0) {
+            console.log('Warning: Remaining principal is zero or negative, skipping payment schedule generation');
+          } else {
+            // Generate new payment schedule for remaining payments
+            const nextPaymentDate = new Date(finalFirstPaymentDate);
+            nextPaymentDate.setMonth(nextPaymentDate.getMonth() + paidPaymentsCount);
 
-          // Insert new payment schedule
-          for (const payment of newPaymentSchedule) {
-            await client.query(`
-              INSERT INTO financed_expense_payments (
-                financed_expense_id, payment_number, due_date,
-                amount_cents, principal_cents, interest_cents
-              ) VALUES ($1, $2, $3, $4, $5, $6)
-            `, [id, paidPaymentsCount + payment.paymentNumber, payment.dueDate,
-                payment.amountCents, payment.principalCents, payment.interestCents]);
+            console.log('Generating payment schedule starting from:', nextPaymentDate.toISOString().split('T')[0]);
+
+            const newPaymentSchedule = generatePaymentSchedule(
+              remainingPrincipal,
+              finalInterestRatePercent,
+              remainingTermMonths,
+              nextPaymentDate.toISOString().split('T')[0]
+            );
+
+            console.log('Generated payment schedule:', { paymentCount: newPaymentSchedule.length });
+
+            // Insert new payment schedule
+            for (const payment of newPaymentSchedule) {
+              await client.query(`
+                INSERT INTO financed_expense_payments (
+                  financed_expense_id, payment_number, due_date,
+                  amount_cents, principal_cents, interest_cents
+                ) VALUES ($1, $2, $3, $4, $5, $6)
+              `, [id, paidPaymentsCount + payment.paymentNumber, payment.dueDate,
+                  payment.amountCents, payment.principalCents, payment.interestCents]);
+            }
+            console.log('Inserted', newPaymentSchedule.length, 'new payments');
           }
+        } else {
+          console.log('No remaining payments needed - loan is fully paid or overpaid');
         }
       }
 
       await client.query('COMMIT');
+      console.log('Successfully updated financed expense:', { id, title: expense.title });
       res.json(expense);
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Database transaction error in PUT /api/financed-expenses/:id:', {
+        id: id,
+        error: error.message,
+        code: error.code,
+        detail: error.detail,
+        stack: error.stack
+      });
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('Financed expense update error:', {
+      id: id,
+      error: error.message,
+      code: error.code,
+      detail: error.detail,
+      stack: error.stack?.split('\n').slice(0, 5).join('\n') // First 5 lines of stack trace
+    });
+
+    // Provide more specific error messages based on error type
+    if (error.code === '23503') {
+      return res.status(400).json({
+        error: 'Invalid member ID in splits or expense references non-existent record',
+        details: error.detail
+      });
+    }
+
+    if (error.code === '23505') {
+      return res.status(400).json({
+        error: 'Duplicate constraint violation',
+        details: error.detail
+      });
+    }
+
+    if (error.code === '22P02') {
+      return res.status(400).json({
+        error: 'Invalid data format provided',
+        details: 'Check that all numeric values are valid numbers and dates are in correct format'
+      });
+    }
+
+    if (error.code === '23514') {
+      return res.status(400).json({
+        error: 'Check constraint violation',
+        details: error.detail
+      });
+    }
+
+    // Generic error for unexpected issues
+    res.status(500).json({
+      error: 'Failed to update financed expense',
+      details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+});
+
+app.get('/api/financed-expenses/:id/complete', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Get financed expense details
+      const expenseResult = await client.query(`
+        SELECT
+          id, title, description, total_amount_cents, monthly_payment_cents,
+          interest_rate_percent, financing_term_months, purchase_date,
+          first_payment_date, is_active, split_mode,
+          created_at, updated_at
+        FROM financed_expenses
+        WHERE id = $1
+      `, [id]);
+
+      if (expenseResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Financed expense not found' });
+      }
+
+      const expense = expenseResult.rows[0];
+
+      // Get splits for this expense
+      const splitsResult = await client.query(`
+        SELECT id, member_id as "memberId", value
+        FROM financed_expense_splits
+        WHERE financed_expense_id = $1
+      `, [id]);
+
+      // Get all payments with status
+      const paymentsResult = await client.query(`
+        SELECT
+          id, payment_number, due_date, amount_cents,
+          principal_cents, interest_cents, is_paid,
+          paid_date, bill_id
+        FROM financed_expense_payments
+        WHERE financed_expense_id = $1
+        ORDER BY payment_number ASC
+      `, [id]);
+
+      // Calculate summary statistics
+      const payments = paymentsResult.rows;
+      const totalPayments = payments.length;
+      const paidPayments = payments.filter(p => p.is_paid).length;
+      const totalPaidCents = payments
+        .filter(p => p.is_paid)
+        .reduce((sum, p) => sum + p.amount_cents, 0);
+      const remainingBalanceCents = expense.total_amount_cents - totalPaidCents;
+      const nextUnpaidPayment = payments.find(p => !p.is_paid);
+      const paymentsRemaining = payments.filter(p => !p.is_paid).length;
+      const progressPercent = totalPayments > 0 ? Math.round((paidPayments / totalPayments) * 100) : 0;
+
+      // Check if any payment is overdue
+      const today = new Date();
+      const isOverdue = payments.some(p =>
+        !p.is_paid && new Date(p.due_date) < today
+      );
+
+      await client.query('COMMIT');
+
+      // Format response
+      res.json({
+        id: expense.id,
+        title: expense.title,
+        description: expense.description,
+        totalAmountCents: expense.total_amount_cents,
+        monthlyPaymentCents: expense.monthly_payment_cents,
+        interestRatePercent: parseFloat(expense.interest_rate_percent),
+        financingTermMonths: expense.financing_term_months,
+        purchaseDate: expense.purchase_date,
+        firstPaymentDate: expense.first_payment_date,
+        isActive: expense.is_active,
+        splitMode: expense.split_mode,
+        createdAt: expense.created_at,
+        updatedAt: expense.updated_at,
+
+        // Embedded splits data with proper value conversion
+        splits: splitsResult.rows.map(split => ({
+          id: split.id,
+          memberId: split.memberId,
+          value: expense.split_mode === 'amount' ? split.value / 100 : split.value
+        })),
+
+        // Embedded payments data
+        payments: payments.map(payment => ({
+          id: payment.id,
+          paymentNumber: payment.payment_number,
+          dueDate: payment.due_date,
+          amountCents: payment.amount_cents,
+          principalCents: payment.principal_cents,
+          interestCents: payment.interest_cents,
+          isPaid: payment.is_paid,
+          paidDate: payment.paid_date,
+          billId: payment.bill_id
+        })),
+
+        // Calculated summary
+        summary: {
+          totalPayments,
+          paidPayments,
+          totalPaidCents,
+          remainingBalanceCents,
+          nextDueDate: nextUnpaidPayment?.due_date,
+          paymentsRemaining,
+          progressPercent,
+          isOverdue,
+          nextPaymentAmount: nextUnpaidPayment?.amount_cents
+        }
+      });
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
@@ -1478,8 +1749,8 @@ app.put('/api/financed-expenses/:id', async (req, res) => {
       client.release();
     }
   } catch (error) {
-    console.error('Financed expense update error:', error);
-    res.status(500).json({ error: 'Failed to update financed expense' });
+    console.error('Financed expense complete fetch error:', error);
+    res.status(500).json({ error: 'Failed to fetch complete financed expense data' });
   }
 });
 
@@ -1654,6 +1925,81 @@ app.post('/api/financed-expenses/:id/payments/:paymentId/mark-paid', async (req,
   }
 });
 
+app.post('/api/financed-expenses/:id/payments/:paymentId/unmark-paid', async (req, res) => {
+  try {
+    const { id, paymentId } = req.params;
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Verify payment exists and belongs to the expense
+      const paymentResult = await client.query(`
+        SELECT p.*, fe.title
+        FROM financed_expense_payments p
+        JOIN financed_expenses fe ON p.financed_expense_id = fe.id
+        WHERE p.id = $1 AND p.financed_expense_id = $2
+      `, [paymentId, id]);
+
+      if (paymentResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Payment not found' });
+      }
+
+      const payment = paymentResult.rows[0];
+
+      if (!payment.is_paid) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Payment is already unpaid' });
+      }
+
+      // Unmark payment as paid and remove bill link
+      const updatedPaymentResult = await client.query(`
+        UPDATE financed_expense_payments
+        SET is_paid = false, paid_date = NULL, bill_id = NULL
+        WHERE id = $1
+        RETURNING id, payment_number, due_date, amount_cents,
+                 principal_cents, interest_cents, is_paid,
+                 paid_date, bill_id
+      `, [paymentId]);
+
+      const updatedPayment = updatedPaymentResult.rows[0];
+
+      // If this payment was previously linked to a bill, we removed that link
+      // The bill itself remains (might have other payments associated)
+      // but this payment is no longer connected to it
+
+      // Since we unmarked a payment, ensure the expense is marked as active
+      await client.query(
+        'UPDATE financed_expenses SET is_active = true WHERE id = $1',
+        [id]
+      );
+
+      await client.query('COMMIT');
+
+      res.json({
+        id: updatedPayment.id,
+        paymentNumber: updatedPayment.payment_number,
+        dueDate: updatedPayment.due_date,
+        amountCents: updatedPayment.amount_cents,
+        principalCents: updatedPayment.principal_cents,
+        interestCents: updatedPayment.interest_cents,
+        isPaid: updatedPayment.is_paid,
+        paidDate: updatedPayment.paid_date,
+        billId: updatedPayment.bill_id
+      });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('Unmark payment as paid error:', error);
+    res.status(500).json({ error: 'Failed to unmark payment as paid' });
+  }
+});
+
 app.delete('/api/financed-expenses/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -1803,12 +2149,42 @@ async function startServer() {
       console.log(`🛠️  Debug info: http://localhost:${PORT}/api/debug`)
     })
   } catch (error) {
-    console.error('💥 Failed to start server:', error)
-    console.log('📋 Environment info:', {
-      NODE_ENV: process.env.NODE_ENV,
-      PORT: process.env.PORT,
-      DATABASE_URL: process.env.DATABASE_URL ? 'SET' : 'MISSING'
-    })
+    console.error('💥 Failed to start server')
+
+    // Categorize and provide helpful error messages
+    if (error instanceof Error) {
+      if (error.message.includes('DATABASE_URL environment variable is required')) {
+        console.error('🔧 Configuration Error: Missing database connection')
+        console.error('💡 Create a .env file with DATABASE_URL for local development')
+        console.error('💡 Set DATABASE_URL environment variable in production')
+      } else if (error.message.includes('SASL') || error.message.includes('password')) {
+        console.error('🔐 Database Authentication Error')
+        console.error('💡 Check your database username and password in DATABASE_URL')
+      } else if (error.message.includes('ENOTFOUND') || error.message.includes('ECONNREFUSED')) {
+        console.error('🌐 Database Connection Error')
+        console.error('💡 Check if your database server is running and accessible')
+      } else if (error.message.includes('listen EADDRINUSE')) {
+        console.error('⚠️ Port Already in Use Error')
+        console.error(`💡 Port ${PORT} is already in use. Try a different port or stop the other process`)
+      } else {
+        console.error('🔍 Server Startup Error:', error.message)
+      }
+    } else {
+      console.error('🔍 Unknown Server Error:', error)
+    }
+
+    console.log('\n📋 Environment Debugging Info:')
+    console.log('   NODE_ENV:', process.env.NODE_ENV || 'undefined')
+    console.log('   PORT:', process.env.PORT || 'undefined (using default 8080)')
+    console.log('   DATABASE_URL:', process.env.DATABASE_URL ? 'SET' : 'MISSING')
+
+    console.log('\n🛠️ Troubleshooting Steps:')
+    console.log('   1. Check that DATABASE_URL is correctly set')
+    console.log('   2. Verify database server is running')
+    console.log('   3. Test database connection manually')
+    console.log('   4. Check firewall and network settings')
+    console.log('   5. Review error messages above for specific issues')
+
     process.exit(1)
   }
 }

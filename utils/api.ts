@@ -186,6 +186,12 @@ export interface ApiFinancedExpensePayment {
   createdAt: string
 }
 
+// Complete API response that includes expense with all payments
+export interface ApiFinancedExpenseComplete {
+  expense: ApiFinancedExpense
+  payments: ApiFinancedExpensePayment[]
+}
+
 class ApiClient {
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const url = `${API_BASE}/api${endpoint}`
@@ -348,6 +354,10 @@ class ApiClient {
 
   async getFinancedExpense(id: string): Promise<ApiFinancedExpense> {
     return this.request(`/financed-expenses/${id}`)
+  }
+
+  async getFinancedExpenseComplete(id: string): Promise<ApiFinancedExpenseComplete> {
+    return this.request(`/financed-expenses/${id}/complete`)
   }
 
   async createFinancedExpense(data: any): Promise<ApiFinancedExpense> {

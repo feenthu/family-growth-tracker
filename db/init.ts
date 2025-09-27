@@ -3,9 +3,32 @@ import dotenv from 'dotenv'
 
 dotenv.config()
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-})
+function createDatabasePool(): Pool {
+  const databaseUrl = process.env.DATABASE_URL;
+
+  if (!databaseUrl || databaseUrl === 'MISSING') {
+    console.error('❌ DATABASE_URL environment variable is required');
+    console.error('💡 For local development, create a .env file with:');
+    console.error('   DATABASE_URL=postgresql://username:password@localhost:5432/database_name');
+    console.error('💡 For production, set DATABASE_URL in your deployment environment');
+    throw new Error('DATABASE_URL environment variable is required');
+  }
+
+  try {
+    return new Pool({
+      connectionString: databaseUrl,
+      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+      max: 20,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 10000,
+    });
+  } catch (error) {
+    console.error('❌ Failed to create database connection pool:', error);
+    throw new Error(`Database pool creation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+const pool = createDatabasePool();
 
 const createTablesSQL = `
 -- Members table
@@ -224,17 +247,24 @@ CREATE INDEX IF NOT EXISTS idx_financed_expense_payments_bill_id ON financed_exp
 `
 
 export async function initializeDatabase(): Promise<void> {
-  const client = await pool.connect()
+  console.log('🔧 Initializing database...')
 
+  let client;
   try {
-    console.log('🔧 Initializing database tables...')
+    // Test database connectivity first
+    client = await pool.connect()
+
+    // Verify database connection with a simple query
+    await client.query('SELECT NOW()')
+    console.log('✅ Database connection established')
 
     // Execute the SQL to create all tables
+    console.log('🔧 Creating database tables...')
     await client.query(createTablesSQL)
-
     console.log('✅ Database tables created successfully!')
 
     // Check if we have any members (for default data)
+    console.log('🔍 Checking for existing data...')
     const memberCount = await client.query('SELECT COUNT(*) as count FROM members')
     const count = parseInt(memberCount.rows[0].count)
 
@@ -251,10 +281,34 @@ export async function initializeDatabase(): Promise<void> {
     console.log(`📊 Database ready! (${count} members found)`)
 
   } catch (error) {
-    console.error('❌ Database initialization failed:', error)
-    throw error
+    console.error('❌ Database initialization failed')
+
+    if (error instanceof Error) {
+      // Categorize error types for better troubleshooting
+      if (error.message.includes('SASL') || error.message.includes('password')) {
+        console.error('🔐 Authentication Error: Check your database credentials')
+        console.error('💡 Verify username/password in DATABASE_URL')
+      } else if (error.message.includes('ENOTFOUND') || error.message.includes('ECONNREFUSED')) {
+        console.error('🌐 Connection Error: Cannot reach database server')
+        console.error('💡 Check if database server is running and accessible')
+      } else if (error.message.includes('timeout')) {
+        console.error('⏱️ Timeout Error: Database connection timed out')
+        console.error('💡 Database server may be overloaded or network issues')
+      } else if (error.message.includes('syntax error')) {
+        console.error('📝 SQL Syntax Error: Problem with database schema')
+        console.error('💡 Database schema may be corrupted or incompatible')
+      } else {
+        console.error('🔍 Unexpected Error:', error.message)
+      }
+    } else {
+      console.error('🔍 Unknown Error:', error)
+    }
+
+    throw new Error(`Database initialization failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
   } finally {
-    client.release()
+    if (client) {
+      client.release()
+    }
   }
 }
 

@@ -57,7 +57,13 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                   <p className="mt-2 text-sm text-red-700 dark:text-red-300">
                     The application encountered an unexpected error. This might be due to data formatting issues or calculation problems.
                   </p>
-                  <div className="mt-4">
+                  <div className="mt-4 space-x-3">
+                    <button
+                      onClick={() => this.setState({ hasError: false, error: undefined, errorInfo: undefined })}
+                      className="bg-blue-100 dark:bg-blue-800 hover:bg-blue-200 dark:hover:bg-blue-700 text-blue-800 dark:text-blue-200 px-4 py-2 rounded-md text-sm font-medium transition-colors"
+                    >
+                      Try Again
+                    </button>
                     <button
                       onClick={() => window.location.reload()}
                       className="bg-red-100 dark:bg-red-800 hover:bg-red-200 dark:hover:bg-red-700 text-red-800 dark:text-red-200 px-4 py-2 rounded-md text-sm font-medium transition-colors"
