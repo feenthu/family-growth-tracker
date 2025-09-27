@@ -328,13 +328,25 @@ export const FinancedExpenseModal: React.FC<FinancedExpenseModalProps> = ({
 
           {/* Payment Schedule */}
           <div>
-            <h3 className="text-lg font-medium text-slate-800 dark:text-slate-200 mb-4">
-              Payment Schedule
-            </h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-medium text-slate-800 dark:text-slate-200">
+                Payment Schedule
+              </h3>
+              {process.env.NODE_ENV === 'development' && (
+                <span className="text-xs px-2 py-1 rounded bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+                  Admin: {isAdminMode ? 'Yes' : 'No'} | Payments: {payments.length}
+                </span>
+              )}
+            </div>
 
             {dataLoading ? (
               <div className="flex justify-center py-8">
                 <LoadingSpinner />
+              </div>
+            ) : payments.length === 0 ? (
+              <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+                <p>No payment schedule available.</p>
+                <p className="text-sm mt-1">Payment data may still be loading.</p>
               </div>
             ) : (
               <div className="space-y-2 max-h-96 overflow-y-auto">
