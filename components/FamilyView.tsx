@@ -6,38 +6,94 @@ import { resolveItemCycle, ItemCycle, computeMortgageStats } from '../utils/calc
 import { MortgageSnapshot } from './MortgageSnapshot';
 import { FinancedExpenseCard } from './FinancedExpenseCard';
 import { FinancedExpenseModal } from './FinancedExpenseModal';
-import { useFinancedExpensePayments, financedExpenseOperations } from '../hooks/useFinancedExpenses';
+import { useFinancedExpenseCompleteQuery, useFinancedExpenseMutations } from '../hooks/useFinancedExpensesQuery';
 import { startOfDay, endOfDay, getMonthEnd } from '../utils/dateUtils';
 
-// Helper component to fetch payments for each financed expense
+// React Query-based component for financed expense cards
 const FinancedExpenseCardWrapper: React.FC<{
   expense: FinancedExpense;
   people: Person[];
   isAdminMode: boolean;
   onExpenseClick: (expense: FinancedExpense) => void;
 }> = ({ expense, people, isAdminMode, onExpenseClick }) => {
-  const [payments] = useFinancedExpensePayments(expense.id);
+  const { data: expenseData, isLoading, error, refetch } = useFinancedExpenseCompleteQuery(expense.id);
+  const { markPaymentPaid } = useFinancedExpenseMutations();
 
   const handlePaymentClick = async (expense: FinancedExpense, payment: FinancedExpensePayment) => {
+    if (!isAdminMode) return;
+
     try {
-      await financedExpenseOperations.markPaymentPaid(
-        expense.id,
-        payment.id,
-        new Date().toISOString().split('T')[0]
-      );
-      // Note: In a real app, this would trigger a refresh of the payments data
+      await markPaymentPaid.mutateAsync({
+        expenseId: expense.id,
+        paymentId: payment.id,
+        paidDate: new Date().toISOString().split('T')[0]
+      });
     } catch (error) {
       console.error('Failed to mark payment as paid:', error);
+      // Error is already handled by the mutation's onError callback
     }
   };
 
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-4">
+        <div className="animate-pulse">
+          <div className="h-4 bg-slate-200 dark:bg-slate-600 rounded w-3/4 mb-2"></div>
+          <div className="h-3 bg-slate-200 dark:bg-slate-600 rounded w-1/2 mb-4"></div>
+          <div className="space-y-2">
+            <div className="h-3 bg-slate-200 dark:bg-slate-600 rounded w-full"></div>
+            <div className="h-3 bg-slate-200 dark:bg-slate-600 rounded w-2/3"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state with retry option
+  if (error) {
+    return (
+      <div className="bg-white dark:bg-slate-800 rounded-lg border border-red-200 dark:border-red-700 p-4">
+        <div className="flex items-start space-x-3">
+          <div className="text-red-500 text-xl">⚠️</div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm font-medium text-red-800 dark:text-red-200 mb-1">
+              Failed to load expense details
+            </h3>
+            <p className="text-xs text-red-600 dark:text-red-400 mb-3">
+              {error instanceof Error ? error.message : 'Unknown error occurred'}
+            </p>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => refetch()}
+                className="px-3 py-1 text-xs bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 rounded hover:bg-red-200 dark:hover:bg-red-800 transition-colors"
+              >
+                Retry
+              </button>
+              <button
+                onClick={() => onExpenseClick(expense)}
+                className="px-3 py-1 text-xs bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+              >
+                View Details
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Use data from React Query or fallback to props
+  const currentExpense = expenseData?.expense || expense;
+  const payments = expenseData?.payments || [];
+
   return (
     <div
-      onClick={() => onExpenseClick(expense)}
+      onClick={() => onExpenseClick(currentExpense)}
       className="cursor-pointer"
     >
       <FinancedExpenseCard
-        expense={expense}
+        expense={currentExpense}
         payments={payments}
         people={people}
         onPaymentClick={isAdminMode ? handlePaymentClick : undefined}

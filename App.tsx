@@ -1,5 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Bill, Person, RecurringBill, Payment, Mortgage, MortgagePayment, MortgagePaymentBreakdown, FinancedExpense } from './types';
 import { useMembers, useBills, useRecurringBills, usePayments, useMortgages, useMortgagePayments, useMortgagePaymentBreakdowns, apiOperations } from './hooks/useApiData';
 import { useFinancedExpenses, financedExpenseOperations } from './hooks/useFinancedExpenses';
@@ -18,7 +19,22 @@ import { FinancedExpenseManager } from './components/FinancedExpenseManager';
 import { PasswordModal } from './components/PasswordModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
-const App: React.FC = () => {
+// Create QueryClient instance
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 3,
+      staleTime: 5 * 60 * 1000, // 5 minutes
+      gcTime: 10 * 60 * 1000, // 10 minutes (formerly cacheTime)
+      refetchOnWindowFocus: false,
+    },
+    mutations: {
+      retry: 1,
+    },
+  },
+});
+
+const AppContent: React.FC = () => {
   const [people, setPeople, peopleLoading, peopleWarning] = useMembers();
   const [bills, setBills, billsLoading, billsWarning] = useBills();
   const [recurringBills, setRecurringBills, recurringBillsLoading, recurringBillsWarning] = useRecurringBills();
@@ -524,6 +540,14 @@ const App: React.FC = () => {
         onSuccess={handlePasswordSuccess}
       />
     </div>
+  );
+};
+
+const App: React.FC = () => {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AppContent />
+    </QueryClientProvider>
   );
 };
 

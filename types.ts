@@ -218,3 +218,53 @@ export interface FinancedExpensePaymentAPI {
   bill_id?: string;
   created_at: string;
 }
+
+// Complete financed expense response type with all embedded data
+export interface FinancedExpenseCompleteAPI {
+  id: string;
+  title: string;
+  description?: string;
+  totalAmountCents: number;
+  monthlyPaymentCents: number;
+  interestRatePercent: number;
+  financingTermMonths: number;
+  purchaseDate: string;
+  firstPaymentDate: string;
+  isActive: boolean;
+  splitMode: SplitMode;
+  createdAt: string;
+  updatedAt: string;
+
+  // Embedded splits data
+  splits: Array<{
+    id: string;
+    memberId: string;
+    value: number; // converted from cents for amount splits
+  }>;
+
+  // Embedded payments data
+  payments: Array<{
+    id: string;
+    paymentNumber: number;
+    dueDate: string;
+    amountCents: number;
+    principalCents: number;
+    interestCents: number;
+    isPaid: boolean;
+    paidDate?: string;
+    billId?: string;
+  }>;
+
+  // Calculated summary
+  summary: {
+    totalPayments: number;
+    paidPayments: number;
+    totalPaidCents: number;
+    remainingBalanceCents: number;
+    nextDueDate?: string;
+    paymentsRemaining: number;
+    progressPercent: number;
+    isOverdue: boolean;
+    nextPaymentAmount?: number;
+  };
+}
