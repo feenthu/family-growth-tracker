@@ -112,6 +112,19 @@ export const BillModal: React.FC<BillModalProps> = ({ isOpen, onClose, onSave, o
     }
   };
 
+  // Calculate monthly payment for financing
+  const monthlyPayment = useMemo(() => {
+    if (!isFinanced || !totalAmount || !interestRate || !financingTerm) return 0;
+
+    const principal = totalAmount;
+    const monthlyRate = (typeof interestRate === 'number' ? interestRate : 0) / 100 / 12;
+    const months = typeof financingTerm === 'number' ? financingTerm : 0;
+
+    if (monthlyRate === 0) return principal / months;
+
+    return principal * (monthlyRate * Math.pow(1 + monthlyRate, months)) / (Math.pow(1 + monthlyRate, months) - 1);
+  }, [isFinanced, totalAmount, interestRate, financingTerm]);
+
   const { isValid, message } = useMemo(() => {
     const total = splits.reduce((sum, s) => sum + (Number(s.value) || 0), 0);
     const amountToValidate = isFinanced ? monthlyPayment : totalAmount;
@@ -138,20 +151,7 @@ export const BillModal: React.FC<BillModalProps> = ({ isOpen, onClose, onSave, o
       default:
         return { isValid: false, message: 'Invalid split mode' };
     }
-  }, [splits, splitMode, totalAmount, isFinanced]);
-
-  // Calculate monthly payment for financing
-  const monthlyPayment = useMemo(() => {
-    if (!isFinanced || !totalAmount || !interestRate || !financingTerm) return 0;
-
-    const principal = totalAmount;
-    const monthlyRate = (typeof interestRate === 'number' ? interestRate : 0) / 100 / 12;
-    const months = typeof financingTerm === 'number' ? financingTerm : 0;
-
-    if (monthlyRate === 0) return principal / months;
-
-    return principal * (monthlyRate * Math.pow(1 + monthlyRate, months)) / (Math.pow(1 + monthlyRate, months) - 1);
-  }, [isFinanced, totalAmount, interestRate, financingTerm]);
+  }, [splits, splitMode, totalAmount, isFinanced, monthlyPayment]);
 
   const isSaveDisabled = useMemo(() => {
     const basicValidation = name === '' || totalAmount <= 0 || !isValid || people.length === 0;
