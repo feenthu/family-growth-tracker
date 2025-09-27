@@ -1654,6 +1654,45 @@ app.post('/api/financed-expenses/:id/payments/:paymentId/mark-paid', async (req,
   }
 });
 
+app.delete('/api/financed-expenses/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Check if the financed expense exists
+      const existsResult = await client.query(
+        'SELECT id FROM financed_expenses WHERE id = $1',
+        [id]
+      );
+
+      if (existsResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Financed expense not found' });
+      }
+
+      // Delete the financed expense (CASCADE will handle related records)
+      // This will automatically delete:
+      // - financed_expense_splits (CASCADE DELETE)
+      // - financed_expense_payments (CASCADE DELETE)
+      await client.query('DELETE FROM financed_expenses WHERE id = $1', [id]);
+
+      await client.query('COMMIT');
+      res.json({ success: true });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('Financed expense deletion error:', error);
+    res.status(500).json({ error: 'Failed to delete financed expense' });
+  }
+});
+
 // Settings API
 app.get('/api/settings', async (req, res) => {
   try {
