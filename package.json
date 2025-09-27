@@ -10,7 +10,9 @@
     "start": "tsx server.ts",
     "db:init": "tsx db/init.ts",
     "db:seed": "echo \"Database seeding not yet implemented\"",
-    "test": "echo \"Tests coming soon\" && exit 0",
+    "test": "tsx test-financed-expenses.ts",
+    "test:database": "tsx test-database.ts",
+    "test:integration": "tsx test-financed-expenses.ts && tsx test-database.ts",
     "test:watch": "echo \"Test watch mode coming soon\" && exit 0",
     "lint": "echo \"Linting coming soon\" && exit 0",
     "lint:fix": "echo \"Lint fix coming soon\" && exit 0",
@@ -31,7 +33,10 @@
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
+    "@types/supertest": "^6.0.2",
     "audit-ci": "^7.1.0",
+    "jest": "^29.7.0",
+    "supertest": "^6.3.4",
     "tsx": "^4.20.5",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"

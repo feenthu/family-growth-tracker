@@ -956,6 +956,676 @@ app.delete('/api/mortgage-payments/:id', async (req, res) => {
   }
 })
 
+// Financial calculation utilities for financed expenses
+function calculateMonthlyPayment(principal: number, annualRate: number, termMonths: number): number {
+  if (annualRate === 0) {
+    return principal / termMonths;
+  }
+
+  const monthlyRate = annualRate / 100 / 12;
+  const numerator = principal * monthlyRate * Math.pow(1 + monthlyRate, termMonths);
+  const denominator = Math.pow(1 + monthlyRate, termMonths) - 1;
+  return numerator / denominator;
+}
+
+function generatePaymentSchedule(
+  totalAmountCents: number,
+  interestRatePercent: number,
+  termMonths: number,
+  firstPaymentDate: string
+): Array<{
+  paymentNumber: number;
+  dueDate: string;
+  amountCents: number;
+  principalCents: number;
+  interestCents: number;
+}> {
+  const schedule: Array<{
+    paymentNumber: number;
+    dueDate: string;
+    amountCents: number;
+    principalCents: number;
+    interestCents: number;
+  }> = [];
+
+  const monthlyPaymentCents = Math.round(calculateMonthlyPayment(totalAmountCents, interestRatePercent, termMonths));
+  let remainingPrincipalCents = totalAmountCents;
+  const monthlyRate = interestRatePercent / 100 / 12;
+
+  const startDate = new Date(firstPaymentDate);
+
+  for (let i = 1; i <= termMonths; i++) {
+    // Calculate due date
+    const dueDate = new Date(startDate);
+    dueDate.setMonth(dueDate.getMonth() + (i - 1));
+
+    // Calculate interest and principal for this payment
+    const interestCents = Math.round(remainingPrincipalCents * monthlyRate);
+    let principalCents = monthlyPaymentCents - interestCents;
+
+    // For final payment, ensure we pay off exactly the remaining principal
+    if (i === termMonths) {
+      principalCents = remainingPrincipalCents;
+    }
+
+    const actualPaymentCents = principalCents + interestCents;
+
+    schedule.push({
+      paymentNumber: i,
+      dueDate: dueDate.toISOString().split('T')[0],
+      amountCents: actualPaymentCents,
+      principalCents,
+      interestCents
+    });
+
+    remainingPrincipalCents -= principalCents;
+  }
+
+  return schedule;
+}
+
+// Financed Expenses API
+app.get('/api/financed-expenses', async (req, res) => {
+  try {
+    // Get all financed expenses
+    const expensesResult = await query(`
+      SELECT
+        id, title, description, total_amount_cents, monthly_payment_cents,
+        interest_rate_percent, financing_term_months, purchase_date,
+        first_payment_date, is_active, split_mode,
+        created_at, updated_at
+      FROM financed_expenses
+      ORDER BY created_at DESC
+    `);
+
+    const expenses = [];
+    for (const expense of expensesResult.rows) {
+      // Get splits for this expense
+      const splitsResult = await query(`
+        SELECT id, member_id as "memberId", value
+        FROM financed_expense_splits
+        WHERE financed_expense_id = $1
+      `, [expense.id]);
+
+      // Get payment summary
+      const paymentSummaryResult = await query(`
+        SELECT
+          COUNT(*) as total_payments,
+          COUNT(*) FILTER (WHERE is_paid = true) as paid_payments,
+          SUM(amount_cents) FILTER (WHERE is_paid = true) as total_paid_cents,
+          MIN(due_date) FILTER (WHERE is_paid = false) as next_due_date
+        FROM financed_expense_payments
+        WHERE financed_expense_id = $1
+      `, [expense.id]);
+
+      const paymentSummary = paymentSummaryResult.rows[0];
+      const totalPaidCents = parseInt(paymentSummary.total_paid_cents || '0');
+      const remainingBalanceCents = expense.total_amount_cents - totalPaidCents;
+
+      expenses.push({
+        id: expense.id,
+        title: expense.title,
+        description: expense.description,
+        totalAmountCents: expense.total_amount_cents,
+        monthlyPaymentCents: expense.monthly_payment_cents,
+        interestRatePercent: parseFloat(expense.interest_rate_percent),
+        financingTermMonths: expense.financing_term_months,
+        purchaseDate: expense.purchase_date,
+        firstPaymentDate: expense.first_payment_date,
+        isActive: expense.is_active,
+        splitMode: expense.split_mode,
+        createdAt: expense.created_at,
+        updatedAt: expense.updated_at,
+        splits: splitsResult.rows,
+        paymentSummary: {
+          totalPayments: parseInt(paymentSummary.total_payments),
+          paidPayments: parseInt(paymentSummary.paid_payments),
+          totalPaidCents,
+          remainingBalanceCents,
+          nextDueDate: paymentSummary.next_due_date
+        }
+      });
+    }
+
+    res.json(expenses);
+  } catch (error) {
+    console.error('Financed expenses fetch error:', error);
+    res.status(500).json({ error: 'Failed to fetch financed expenses' });
+  }
+});
+
+app.post('/api/financed-expenses', async (req, res) => {
+  try {
+    const {
+      title, description, totalAmountCents, interestRatePercent,
+      financingTermMonths, purchaseDate, firstPaymentDate,
+      isActive = true, splitMode, splits
+    } = req.body;
+
+    // Validation
+    if (!title || !totalAmountCents || !financingTermMonths || !purchaseDate || !firstPaymentDate) {
+      return res.status(400).json({ error: 'Missing required fields: title, totalAmountCents, financingTermMonths, purchaseDate, firstPaymentDate' });
+    }
+
+    if (totalAmountCents <= 0) {
+      return res.status(400).json({ error: 'Total amount must be greater than 0' });
+    }
+
+    if (financingTermMonths <= 0) {
+      return res.status(400).json({ error: 'Financing term must be greater than 0' });
+    }
+
+    if (interestRatePercent < 0) {
+      return res.status(400).json({ error: 'Interest rate cannot be negative' });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Calculate monthly payment
+      const monthlyPaymentCents = Math.round(calculateMonthlyPayment(
+        totalAmountCents,
+        interestRatePercent,
+        financingTermMonths
+      ));
+
+      // Insert financed expense
+      const expenseResult = await client.query(`
+        INSERT INTO financed_expenses (
+          title, description, total_amount_cents, monthly_payment_cents,
+          interest_rate_percent, financing_term_months, purchase_date,
+          first_payment_date, is_active, split_mode
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        RETURNING id, title, description, total_amount_cents as "totalAmountCents",
+                 monthly_payment_cents as "monthlyPaymentCents",
+                 interest_rate_percent as "interestRatePercent",
+                 financing_term_months as "financingTermMonths",
+                 purchase_date as "purchaseDate", first_payment_date as "firstPaymentDate",
+                 is_active as "isActive", split_mode as "splitMode",
+                 created_at as "createdAt", updated_at as "updatedAt"
+      `, [title, description, totalAmountCents, monthlyPaymentCents,
+          interestRatePercent, financingTermMonths, purchaseDate,
+          firstPaymentDate, isActive, splitMode]);
+
+      const expense = expenseResult.rows[0];
+
+      // Insert splits
+      const insertedSplits = [];
+      if (splits && splits.length > 0) {
+        for (const split of splits) {
+          const splitResult = await client.query(`
+            INSERT INTO financed_expense_splits (financed_expense_id, member_id, value)
+            VALUES ($1, $2, $3)
+            RETURNING id, member_id as "memberId", value
+          `, [expense.id, split.memberId, split.value]);
+          insertedSplits.push(splitResult.rows[0]);
+        }
+      }
+      expense.splits = insertedSplits;
+
+      // Generate payment schedule
+      const paymentSchedule = generatePaymentSchedule(
+        totalAmountCents,
+        interestRatePercent,
+        financingTermMonths,
+        firstPaymentDate
+      );
+
+      // Insert payment schedule
+      for (const payment of paymentSchedule) {
+        await client.query(`
+          INSERT INTO financed_expense_payments (
+            financed_expense_id, payment_number, due_date,
+            amount_cents, principal_cents, interest_cents
+          ) VALUES ($1, $2, $3, $4, $5, $6)
+        `, [expense.id, payment.paymentNumber, payment.dueDate,
+            payment.amountCents, payment.principalCents, payment.interestCents]);
+      }
+
+      await client.query('COMMIT');
+      res.status(201).json(expense);
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('Financed expense creation error:', error);
+    res.status(500).json({ error: 'Failed to create financed expense' });
+  }
+});
+
+app.get('/api/financed-expenses/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Get financed expense details
+    const expenseResult = await query(`
+      SELECT
+        id, title, description, total_amount_cents, monthly_payment_cents,
+        interest_rate_percent, financing_term_months, purchase_date,
+        first_payment_date, is_active, split_mode,
+        created_at, updated_at
+      FROM financed_expenses
+      WHERE id = $1
+    `, [id]);
+
+    if (expenseResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Financed expense not found' });
+    }
+
+    const expense = expenseResult.rows[0];
+
+    // Get splits
+    const splitsResult = await query(`
+      SELECT id, member_id as "memberId", value
+      FROM financed_expense_splits
+      WHERE financed_expense_id = $1
+    `, [id]);
+
+    // Get all payments with status
+    const paymentsResult = await query(`
+      SELECT
+        id, payment_number, due_date, amount_cents,
+        principal_cents, interest_cents, is_paid,
+        paid_date, bill_id
+      FROM financed_expense_payments
+      WHERE financed_expense_id = $1
+      ORDER BY payment_number ASC
+    `, [id]);
+
+    // Calculate summary statistics
+    const totalPaidCents = paymentsResult.rows
+      .filter(p => p.is_paid)
+      .reduce((sum, p) => sum + p.amount_cents, 0);
+
+    const remainingBalanceCents = expense.total_amount_cents - totalPaidCents;
+    const nextUnpaidPayment = paymentsResult.rows.find(p => !p.is_paid);
+
+    res.json({
+      id: expense.id,
+      title: expense.title,
+      description: expense.description,
+      totalAmountCents: expense.total_amount_cents,
+      monthlyPaymentCents: expense.monthly_payment_cents,
+      interestRatePercent: parseFloat(expense.interest_rate_percent),
+      financingTermMonths: expense.financing_term_months,
+      purchaseDate: expense.purchase_date,
+      firstPaymentDate: expense.first_payment_date,
+      isActive: expense.is_active,
+      splitMode: expense.split_mode,
+      createdAt: expense.created_at,
+      updatedAt: expense.updated_at,
+      splits: splitsResult.rows,
+      payments: paymentsResult.rows.map(payment => ({
+        id: payment.id,
+        paymentNumber: payment.payment_number,
+        dueDate: payment.due_date,
+        amountCents: payment.amount_cents,
+        principalCents: payment.principal_cents,
+        interestCents: payment.interest_cents,
+        isPaid: payment.is_paid,
+        paidDate: payment.paid_date,
+        billId: payment.bill_id
+      })),
+      summary: {
+        totalPaidCents,
+        remainingBalanceCents,
+        nextDueDate: nextUnpaidPayment?.due_date,
+        paymentsRemaining: paymentsResult.rows.filter(p => !p.is_paid).length
+      }
+    });
+  } catch (error) {
+    console.error('Financed expense fetch error:', error);
+    res.status(500).json({ error: 'Failed to fetch financed expense' });
+  }
+});
+
+app.put('/api/financed-expenses/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      title, description, totalAmountCents, interestRatePercent,
+      financingTermMonths, purchaseDate, firstPaymentDate,
+      isActive, splitMode, splits
+    } = req.body;
+
+    // Validation
+    if (!title) {
+      return res.status(400).json({ error: 'Title is required' });
+    }
+
+    if (totalAmountCents !== undefined && totalAmountCents <= 0) {
+      return res.status(400).json({ error: 'Total amount must be greater than 0' });
+    }
+
+    if (financingTermMonths !== undefined && financingTermMonths <= 0) {
+      return res.status(400).json({ error: 'Financing term must be greater than 0' });
+    }
+
+    if (interestRatePercent !== undefined && interestRatePercent < 0) {
+      return res.status(400).json({ error: 'Interest rate cannot be negative' });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Check if expense exists
+      const existingExpense = await client.query(
+        'SELECT * FROM financed_expenses WHERE id = $1',
+        [id]
+      );
+
+      if (existingExpense.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Financed expense not found' });
+      }
+
+      const currentExpense = existingExpense.rows[0];
+
+      // Determine if we need to recalculate payment schedule
+      const needsRecalculation =
+        (totalAmountCents !== undefined && totalAmountCents !== currentExpense.total_amount_cents) ||
+        (interestRatePercent !== undefined && interestRatePercent !== parseFloat(currentExpense.interest_rate_percent)) ||
+        (financingTermMonths !== undefined && financingTermMonths !== currentExpense.financing_term_months) ||
+        (firstPaymentDate !== undefined && firstPaymentDate !== currentExpense.first_payment_date);
+
+      // Use current values if not provided in update
+      const finalTotalAmountCents = totalAmountCents ?? currentExpense.total_amount_cents;
+      const finalInterestRatePercent = interestRatePercent ?? parseFloat(currentExpense.interest_rate_percent);
+      const finalFinancingTermMonths = financingTermMonths ?? currentExpense.financing_term_months;
+      const finalFirstPaymentDate = firstPaymentDate ?? currentExpense.first_payment_date;
+
+      // Calculate new monthly payment if needed
+      const monthlyPaymentCents = needsRecalculation
+        ? Math.round(calculateMonthlyPayment(finalTotalAmountCents, finalInterestRatePercent, finalFinancingTermMonths))
+        : currentExpense.monthly_payment_cents;
+
+      // Update financed expense
+      const expenseResult = await client.query(`
+        UPDATE financed_expenses SET
+          title = $2, description = $3, total_amount_cents = $4,
+          monthly_payment_cents = $5, interest_rate_percent = $6,
+          financing_term_months = $7, purchase_date = $8,
+          first_payment_date = $9, is_active = $10, split_mode = $11,
+          updated_at = NOW()
+        WHERE id = $1
+        RETURNING id, title, description, total_amount_cents as "totalAmountCents",
+                 monthly_payment_cents as "monthlyPaymentCents",
+                 interest_rate_percent as "interestRatePercent",
+                 financing_term_months as "financingTermMonths",
+                 purchase_date as "purchaseDate", first_payment_date as "firstPaymentDate",
+                 is_active as "isActive", split_mode as "splitMode",
+                 created_at as "createdAt", updated_at as "updatedAt"
+      `, [id, title ?? currentExpense.title, description ?? currentExpense.description,
+          finalTotalAmountCents, monthlyPaymentCents, finalInterestRatePercent,
+          finalFinancingTermMonths, purchaseDate ?? currentExpense.purchase_date,
+          finalFirstPaymentDate, isActive ?? currentExpense.is_active,
+          splitMode ?? currentExpense.split_mode]);
+
+      const expense = expenseResult.rows[0];
+
+      // Update splits if provided
+      if (splits !== undefined) {
+        await client.query('DELETE FROM financed_expense_splits WHERE financed_expense_id = $1', [id]);
+
+        const insertedSplits = [];
+        for (const split of splits) {
+          const splitResult = await client.query(`
+            INSERT INTO financed_expense_splits (financed_expense_id, member_id, value)
+            VALUES ($1, $2, $3)
+            RETURNING id, member_id as "memberId", value
+          `, [id, split.memberId, split.value]);
+          insertedSplits.push(splitResult.rows[0]);
+        }
+        expense.splits = insertedSplits;
+      } else {
+        // Get existing splits
+        const splitsResult = await client.query(`
+          SELECT id, member_id as "memberId", value
+          FROM financed_expense_splits
+          WHERE financed_expense_id = $1
+        `, [id]);
+        expense.splits = splitsResult.rows;
+      }
+
+      // Recalculate payment schedule if needed
+      if (needsRecalculation) {
+        // Delete existing unpaid payments
+        await client.query(
+          'DELETE FROM financed_expense_payments WHERE financed_expense_id = $1 AND is_paid = false',
+          [id]
+        );
+
+        // Get the number of paid payments to determine starting payment number
+        const paidPaymentsResult = await client.query(
+          'SELECT COUNT(*) as count FROM financed_expense_payments WHERE financed_expense_id = $1 AND is_paid = true',
+          [id]
+        );
+        const paidPaymentsCount = parseInt(paidPaymentsResult.rows[0].count);
+        const remainingTermMonths = finalFinancingTermMonths - paidPaymentsCount;
+
+        if (remainingTermMonths > 0) {
+          // Calculate remaining principal
+          const totalPaidResult = await client.query(
+            'SELECT SUM(principal_cents) as total_paid FROM financed_expense_payments WHERE financed_expense_id = $1 AND is_paid = true',
+            [id]
+          );
+          const totalPaidPrincipal = parseInt(totalPaidResult.rows[0].total_paid || '0');
+          const remainingPrincipal = finalTotalAmountCents - totalPaidPrincipal;
+
+          // Generate new payment schedule for remaining payments
+          const nextPaymentDate = new Date(finalFirstPaymentDate);
+          nextPaymentDate.setMonth(nextPaymentDate.getMonth() + paidPaymentsCount);
+
+          const newPaymentSchedule = generatePaymentSchedule(
+            remainingPrincipal,
+            finalInterestRatePercent,
+            remainingTermMonths,
+            nextPaymentDate.toISOString().split('T')[0]
+          );
+
+          // Insert new payment schedule
+          for (const payment of newPaymentSchedule) {
+            await client.query(`
+              INSERT INTO financed_expense_payments (
+                financed_expense_id, payment_number, due_date,
+                amount_cents, principal_cents, interest_cents
+              ) VALUES ($1, $2, $3, $4, $5, $6)
+            `, [id, paidPaymentsCount + payment.paymentNumber, payment.dueDate,
+                payment.amountCents, payment.principalCents, payment.interestCents]);
+          }
+        }
+      }
+
+      await client.query('COMMIT');
+      res.json(expense);
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('Financed expense update error:', error);
+    res.status(500).json({ error: 'Failed to update financed expense' });
+  }
+});
+
+app.get('/api/financed-expenses/:id/payments', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verify expense exists
+    const expenseCheck = await query(
+      'SELECT id FROM financed_expenses WHERE id = $1',
+      [id]
+    );
+
+    if (expenseCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Financed expense not found' });
+    }
+
+    // Get all payments for this expense
+    const paymentsResult = await query(`
+      SELECT
+        id, payment_number, due_date, amount_cents,
+        principal_cents, interest_cents, is_paid,
+        paid_date, bill_id, created_at
+      FROM financed_expense_payments
+      WHERE financed_expense_id = $1
+      ORDER BY payment_number ASC
+    `, [id]);
+
+    const payments = paymentsResult.rows.map(payment => ({
+      id: payment.id,
+      financedExpenseId: id,
+      paymentNumber: payment.payment_number,
+      dueDate: payment.due_date,
+      amountCents: payment.amount_cents,
+      principalCents: payment.principal_cents,
+      interestCents: payment.interest_cents,
+      isPaid: payment.is_paid,
+      paidDate: payment.paid_date,
+      billId: payment.bill_id,
+      createdAt: payment.created_at
+    }));
+
+    res.json(payments);
+  } catch (error) {
+    console.error('Financed expense payments fetch error:', error);
+    res.status(500).json({ error: 'Failed to fetch financed expense payments' });
+  }
+});
+
+app.post('/api/financed-expenses/:id/payments/:paymentId/mark-paid', async (req, res) => {
+  try {
+    const { id, paymentId } = req.params;
+    const { paidDate, createBill = false } = req.body;
+
+    // Validation
+    if (!paidDate) {
+      return res.status(400).json({ error: 'Paid date is required' });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Verify payment exists and belongs to the expense
+      const paymentResult = await client.query(`
+        SELECT p.*, fe.title, fe.split_mode
+        FROM financed_expense_payments p
+        JOIN financed_expenses fe ON p.financed_expense_id = fe.id
+        WHERE p.id = $1 AND p.financed_expense_id = $2
+      `, [paymentId, id]);
+
+      if (paymentResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Payment not found' });
+      }
+
+      const payment = paymentResult.rows[0];
+
+      if (payment.is_paid) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Payment is already marked as paid' });
+      }
+
+      // Mark payment as paid
+      const updatedPaymentResult = await client.query(`
+        UPDATE financed_expense_payments
+        SET is_paid = true, paid_date = $2
+        WHERE id = $1
+        RETURNING id, payment_number, due_date, amount_cents,
+                 principal_cents, interest_cents, is_paid,
+                 paid_date, bill_id
+      `, [paymentId, paidDate]);
+
+      const updatedPayment = updatedPaymentResult.rows[0];
+
+      // Optionally create a corresponding bill
+      let billId = null;
+      if (createBill) {
+        // Get expense splits to create bill splits
+        const splitsResult = await client.query(`
+          SELECT member_id, value
+          FROM financed_expense_splits
+          WHERE financed_expense_id = $1
+        `, [id]);
+
+        // Create bill
+        const billResult = await client.query(`
+          INSERT INTO bills (name, amount_cents, due_date, split_mode)
+          VALUES ($1, $2, $3, $4)
+          RETURNING id
+        `, [
+          `${payment.title} - Payment #${payment.payment_number}`,
+          payment.amount_cents,
+          payment.due_date,
+          payment.split_mode
+        ]);
+
+        billId = billResult.rows[0].id;
+
+        // Create bill splits
+        for (const split of splitsResult.rows) {
+          await client.query(`
+            INSERT INTO bill_splits (bill_id, member_id, value)
+            VALUES ($1, $2, $3)
+          `, [billId, split.member_id, split.value]);
+        }
+
+        // Link payment to bill
+        await client.query(
+          'UPDATE financed_expense_payments SET bill_id = $1 WHERE id = $2',
+          [billId, paymentId]
+        );
+      }
+
+      // Check if this was the final payment and update expense status
+      const remainingPaymentsResult = await client.query(
+        'SELECT COUNT(*) as count FROM financed_expense_payments WHERE financed_expense_id = $1 AND is_paid = false',
+        [id]
+      );
+
+      const remainingPayments = parseInt(remainingPaymentsResult.rows[0].count);
+      if (remainingPayments === 0) {
+        await client.query(
+          'UPDATE financed_expenses SET is_active = false WHERE id = $1',
+          [id]
+        );
+      }
+
+      await client.query('COMMIT');
+
+      res.json({
+        id: updatedPayment.id,
+        paymentNumber: updatedPayment.payment_number,
+        dueDate: updatedPayment.due_date,
+        amountCents: updatedPayment.amount_cents,
+        principalCents: updatedPayment.principal_cents,
+        interestCents: updatedPayment.interest_cents,
+        isPaid: updatedPayment.is_paid,
+        paidDate: updatedPayment.paid_date,
+        billId: billId || updatedPayment.bill_id,
+        ...(billId && { createdBillId: billId })
+      });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('Mark payment as paid error:', error);
+    res.status(500).json({ error: 'Failed to mark payment as paid' });
+  }
+});
+
 // Settings API
 app.get('/api/settings', async (req, res) => {
   try {

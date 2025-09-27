@@ -151,3 +151,70 @@ export interface MortgageStats {
         per_member_lifetime: { personId: string; name: string; total: number }[];
     };
 }
+
+// --- Financed Expense System Types ---
+
+export interface FinancedExpense extends Splittable {
+  id: string;
+  title: string;
+  description?: string;
+  totalAmount: number; // Frontend representation (dollars)
+  monthlyPayment: number; // Frontend representation (dollars)
+  interestRatePercent: number; // e.g., 6.25 for 6.25%
+  financingTermMonths: number;
+  purchaseDate: string; // ISO date string "YYYY-MM-DD"
+  firstPaymentDate: string; // ISO date string "YYYY-MM-DD"
+  isActive: boolean;
+}
+
+export interface FinancedExpensePayment {
+  id: string;
+  financedExpenseId: string;
+  paymentNumber: number;
+  dueDate: string; // ISO date string "YYYY-MM-DD"
+  amount: number; // Frontend representation (dollars)
+  principal: number; // Frontend representation (dollars)
+  interest: number; // Frontend representation (dollars)
+  isPaid: boolean;
+  paidDate?: string; // ISO date string "YYYY-MM-DD"
+  billId?: string; // Optional link to generated bill
+}
+
+// API types that match the database schema (using cents)
+export interface FinancedExpenseAPI {
+  id: string;
+  title: string;
+  description?: string;
+  total_amount_cents: number;
+  monthly_payment_cents: number;
+  interest_rate_percent: number;
+  financing_term_months: number;
+  purchase_date: string;
+  first_payment_date: string;
+  is_active: boolean;
+  split_mode: SplitMode;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FinancedExpenseSplitAPI {
+  id: string;
+  financed_expense_id: string;
+  member_id: string;
+  value: number;
+  created_at: string;
+}
+
+export interface FinancedExpensePaymentAPI {
+  id: string;
+  financed_expense_id: string;
+  payment_number: number;
+  due_date: string;
+  amount_cents: number;
+  principal_cents: number;
+  interest_cents: number;
+  is_paid: boolean;
+  paid_date?: string;
+  bill_id?: string;
+  created_at: string;
+}
