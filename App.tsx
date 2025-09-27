@@ -1,7 +1,8 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Bill, Person, RecurringBill, Payment, Mortgage, MortgagePayment, MortgagePaymentBreakdown } from './types';
+import { Bill, Person, RecurringBill, Payment, Mortgage, MortgagePayment, MortgagePaymentBreakdown, FinancedExpense } from './types';
 import { useMembers, useBills, useRecurringBills, usePayments, useMortgages, useMortgagePayments, useMortgagePaymentBreakdowns, apiOperations } from './hooks/useApiData';
+import { useFinancedExpenses, financedExpenseOperations } from './hooks/useFinancedExpenses';
 import { Header } from './components/Header';
 import { Summary } from './components/Summary';
 import { BillManager } from './components/BillManager';
@@ -24,12 +25,13 @@ const App: React.FC = () => {
   const [mortgages, setMortgages, mortgagesLoading, mortgagesWarning] = useMortgages();
   const [mortgagePayments, setMortgagePayments, mortgagePaymentsLoading, mortgagePaymentsWarning] = useMortgagePayments();
   const [mortgagePaymentBreakdowns, setMortgagePaymentBreakdowns, breakdownsLoading, breakdownsWarning] = useMortgagePaymentBreakdowns();
+  const [financedExpenses, setFinancedExpenses, financedExpensesLoading, financedExpensesWarning] = useFinancedExpenses();
 
   // Compute loading state (no blocking errors anymore)
-  const isLoading = peopleLoading || billsLoading || recurringBillsLoading || paymentsLoading || mortgagesLoading || mortgagePaymentsLoading || breakdownsLoading;
+  const isLoading = peopleLoading || billsLoading || recurringBillsLoading || paymentsLoading || mortgagesLoading || mortgagePaymentsLoading || breakdownsLoading || financedExpensesLoading;
 
   // Collect warnings for non-blocking notification
-  const warnings = [peopleWarning, billsWarning, recurringBillsWarning, paymentsWarning, mortgagesWarning, mortgagePaymentsWarning, breakdownsWarning].filter(Boolean);
+  const warnings = [peopleWarning, billsWarning, recurringBillsWarning, paymentsWarning, mortgagesWarning, mortgagePaymentsWarning, breakdownsWarning, financedExpensesWarning].filter(Boolean);
   
   // Default view is 'family'. 'manage' is a protected state.
   const [view, setView] = useState<'manage' | 'family'>('family');
@@ -64,8 +66,13 @@ const App: React.FC = () => {
     // Calculate the total from regular bills (one-time bills)
     const regularBillsTotal = bills.reduce((sum, bill) => sum + safeNumber(bill.amount), 0);
 
+    // Calculate the total planned monthly amount from active financed expenses.
+    const financedExpensesTotal = financedExpenses
+      .filter(fe => fe.isActive)
+      .reduce((sum, fe) => sum + safeNumber(fe.monthlyPayment), 0);
+
     // The main total is the sum of these planned amounts.
-    const totalMonthly = mortgagesTotal + monthlyRecurringBillsTotal + regularBillsTotal;
+    const totalMonthly = mortgagesTotal + monthlyRecurringBillsTotal + regularBillsTotal + financedExpensesTotal;
 
     // The "Split Totals" are calculated separately based on the same set of items.
     const perPersonTotals: { [key: string]: number } = {};
@@ -110,13 +117,26 @@ const App: React.FC = () => {
         });
     });
 
+    // Process splits for active financed expenses.
+    financedExpenses
+      .filter(fe => fe.isActive)
+      .forEach(expense => {
+        const calculatedSplits = calculateSplitAmounts(expense, people);
+
+        calculatedSplits.forEach(split => {
+            if (perPersonTotals[split.personId] !== undefined) {
+                perPersonTotals[split.personId] += split.amount;
+            }
+        });
+    });
+
     const finalPerPersonTotals = people.map(person => ({
         ...person,
         total: perPersonTotals[person.id] || 0,
     }));
 
     return { totalMonthly, perPersonTotals: finalPerPersonTotals };
-  }, [people, mortgages, recurringBills, bills]);
+  }, [people, mortgages, recurringBills, bills, financedExpenses]);
 
   const handleViewChangeRequest = (newView: 'manage' | 'family') => {
     if (newView === 'family') {
@@ -190,6 +210,16 @@ const App: React.FC = () => {
     }
   };
 
+  const handleSaveFinancedExpense = async (expense: FinancedExpense) => {
+    try {
+      const createdExpense = await financedExpenseOperations.createFinancedExpense(expense);
+      setFinancedExpenses([...financedExpenses, createdExpense]);
+      closeBillModal();
+    } catch (error) {
+      console.error('Failed to save financed expense:', error);
+    }
+  };
+
   const handleDeleteBill = async (billId: string) => {
     try {
       await apiOperations.deleteBill(billId);
@@ -197,6 +227,24 @@ const App: React.FC = () => {
       setPayments(payments.filter(p => p.billId !== billId));
     } catch (error) {
       console.error('Failed to delete bill:', error);
+    }
+  };
+
+  const handleUpdateFinancedExpense = async (expense: FinancedExpense) => {
+    try {
+      const updatedExpense = await financedExpenseOperations.updateFinancedExpense(expense);
+      setFinancedExpenses(financedExpenses.map(e => e.id === expense.id ? updatedExpense : e));
+    } catch (error) {
+      console.error('Failed to update financed expense:', error);
+    }
+  };
+
+  const handleDeleteFinancedExpense = async (expenseId: string) => {
+    try {
+      await financedExpenseOperations.deleteFinancedExpense(expenseId);
+      setFinancedExpenses(financedExpenses.filter(e => e.id !== expenseId));
+    } catch (error) {
+      console.error('Failed to delete financed expense:', error);
     }
   };
 
@@ -411,6 +459,7 @@ const App: React.FC = () => {
                     onEditBill={openBillModal}
                     onDeleteBill={handleDeleteBill}
                     onSaveBill={handleSaveBill}
+                    onSaveFinanced={handleSaveFinancedExpense}
                     onSavePayment={handleSavePayment}
                     onDeletePayment={handleDeletePayment}
                     isModalOpen={isBillModalOpen}
@@ -452,6 +501,10 @@ const App: React.FC = () => {
                 mortgages={mortgages}
                 mortgagePayments={mortgagePayments}
                 mortgagePaymentBreakdowns={mortgagePaymentBreakdowns}
+                financedExpenses={financedExpenses}
+                onUpdateFinancedExpense={handleUpdateFinancedExpense}
+                onDeleteFinancedExpense={handleDeleteFinancedExpense}
+                isManagerModeUnlocked={isManagerModeUnlocked}
             />
           )}
           </ErrorBoundary>

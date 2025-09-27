@@ -145,6 +145,47 @@ export interface ApiMortgagePaymentBreakdown {
   createdAt: string
 }
 
+// Financed Expenses API Types
+export interface ApiFinancedExpense {
+  id: string
+  title: string
+  description?: string
+  totalAmountCents: number
+  monthlyPaymentCents: number
+  interestRatePercent: number
+  financingTermMonths: number
+  purchaseDate: string
+  firstPaymentDate: string
+  isActive: boolean
+  splitMode: string
+  createdAt: string
+  updatedAt: string
+  splits: ApiFinancedExpenseSplit[]
+  payments?: ApiFinancedExpensePayment[]
+}
+
+export interface ApiFinancedExpenseSplit {
+  id: string
+  financedExpenseId: string
+  memberId: string
+  value: number
+  createdAt: string
+}
+
+export interface ApiFinancedExpensePayment {
+  id: string
+  financedExpenseId: string
+  paymentNumber: number
+  dueDate: string
+  amountCents: number
+  principalCents: number
+  interestCents: number
+  isPaid: boolean
+  paidDate?: string
+  billId?: string
+  createdAt: string
+}
+
 class ApiClient {
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const url = `${API_BASE}/api${endpoint}`
@@ -297,6 +338,46 @@ class ApiClient {
   async deleteMortgagePayment(id: string): Promise<{ success: boolean }> {
     return this.request(`/mortgage-payments/${id}`, {
       method: 'DELETE',
+    })
+  }
+
+  // Financed Expenses API
+  async getFinancedExpenses(): Promise<ApiFinancedExpense[]> {
+    return this.request('/financed-expenses')
+  }
+
+  async getFinancedExpense(id: string): Promise<ApiFinancedExpense> {
+    return this.request(`/financed-expenses/${id}`)
+  }
+
+  async createFinancedExpense(data: any): Promise<ApiFinancedExpense> {
+    return this.request('/financed-expenses', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateFinancedExpense(id: string, data: any): Promise<ApiFinancedExpense> {
+    return this.request(`/financed-expenses/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteFinancedExpense(id: string): Promise<{ success: boolean }> {
+    return this.request(`/financed-expenses/${id}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async getFinancedExpensePayments(id: string): Promise<ApiFinancedExpensePayment[]> {
+    return this.request(`/financed-expenses/${id}/payments`)
+  }
+
+  async markFinancedExpensePaymentPaid(expenseId: string, paymentId: string, data: any): Promise<ApiFinancedExpensePayment> {
+    return this.request(`/financed-expenses/${expenseId}/payments/${paymentId}/mark-paid`, {
+      method: 'POST',
+      body: JSON.stringify(data),
     })
   }
 }

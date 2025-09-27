@@ -17,7 +17,10 @@
       "Bash(node:*)",
       "Bash(API_URL=https://family-growth-tracker-production.up.railway.app node test-database.ts)",
       "Bash(npm run build:*)",
-      "Bash(git fetch:*)"
+      "Bash(git fetch:*)",
+      "Bash(npx tsc:*)",
+      "Bash(tsx test-frontend-components.ts:*)",
+      "Bash(npx tsx:*)"
     ],
     "deny": [],
     "ask": []

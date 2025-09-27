@@ -1,0 +1,370 @@
+{
+  "feature": {
+    "name": "Financed Expense Tracking",
+    "version": "1.0.0",
+    "description": "Allows users to track expenses paid through financing with automatic recurring payment generation",
+    "status": "specification_complete",
+    "priority": "medium",
+    "estimatedHours": "15-23",
+    "created": "2025-09-26",
+    "lastUpdated": "2025-09-26"
+  },
+  "database": {
+    "changes": {
+      "newTables": [
+        {
+          "name": "financed_expenses",
+          "purpose": "Store main financed expense records with financing terms",
+          "keyFields": ["total_amount_cents", "financing_terms_months", "monthly_payment_cents"],
+          "relationships": ["one-to-many with financed_expense_splits", "one-to-many with financed_expense_payments"]
+        },
+        {
+          "name": "financed_expense_splits",
+          "purpose": "Store split allocations for financed expenses among family members",
+          "keyFields": ["financed_expense_id", "member_id", "value"],
+          "relationships": ["many-to-one with financed_expenses", "many-to-one with members"]
+        },
+        {
+          "name": "financed_expense_payments",
+          "purpose": "Store payment schedule and payment status for each installment",
+          "keyFields": ["payment_number", "due_date", "amount_cents", "is_paid"],
+          "relationships": ["many-to-one with financed_expenses", "optional one-to-one with bills"]
+        }
+      ],
+      "modifiedTables": [],
+      "newIndexes": [
+        "idx_financed_expenses_active",
+        "idx_financed_expense_splits_expense_id",
+        "idx_financed_expense_payments_expense_id",
+        "idx_financed_expense_payments_due_date"
+      ]
+    },
+    "dataIntegrity": {
+      "constraints": [
+        "Foreign key cascades for data consistency",
+        "Payment schedule validation (terms 1-60 months)",
+        "Amount validation (positive values only)"
+      ],
+      "businessRules": [
+        "Monthly payment = total amount ÷ financing terms",
+        "Last payment adjusted for cent precision",
+        "Payment dates calculated from purchase date + monthly increments"
+      ]
+    }
+  },
+  "api": {
+    "newEndpoints": [
+      {
+        "method": "GET",
+        "path": "/api/financed-expenses",
+        "purpose": "Retrieve all financed expenses with embedded splits and payments",
+        "queryParams": ["active", "include_payments"],
+        "authentication": "none",
+        "rateLimit": "standard"
+      },
+      {
+        "method": "POST",
+        "path": "/api/financed-expenses",
+        "purpose": "Create new financed expense and auto-generate payment schedule",
+        "bodySchema": "FinancedExpenseCreateRequest",
+        "businessLogic": ["Calculate monthly payments", "Generate payment schedule", "Optional bill creation"],
+        "authentication": "none",
+        "rateLimit": "standard"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/financed-expenses/:id",
+        "purpose": "Update financed expense (affects future unpaid payments only)",
+        "bodySchema": "FinancedExpenseUpdateRequest",
+        "businessLogic": ["Preserve paid payment history", "Update future payments only"],
+        "authentication": "none",
+        "rateLimit": "standard"
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/financed-expenses/:id",
+        "purpose": "Soft delete financed expense (preserve payment history)",
+        "businessLogic": ["Set is_active = false", "Maintain referential integrity"],
+        "authentication": "none",
+        "rateLimit": "standard"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/financed-expenses/:id/payments/:paymentId/mark-paid",
+        "purpose": "Mark specific payment as paid",
+        "bodySchema": "PaymentCompletionRequest",
+        "businessLogic": ["Update payment status", "Optional bill integration"],
+        "authentication": "none",
+        "rateLimit": "standard"
+      },
+      {
+        "method": "GET",
+        "path": "/api/financed-expenses/:id/payment-schedule",
+        "purpose": "Get upcoming payment schedule for specific financed expense",
+        "responseSchema": "PaymentScheduleResponse",
+        "authentication": "none",
+        "rateLimit": "standard"
+      }
+    ],
+    "modifiedEndpoints": [],
+    "integration": {
+      "billsApi": "Optional automatic bill generation for each payment",
+      "paymentsApi": "Link financed payments to regular payment system",
+      "membersApi": "Use existing member system for split allocations"
+    }
+  },
+  "frontend": {
+    "newComponents": [
+      {
+        "name": "FinancedExpenseManager",
+        "path": "components/FinancedExpenseManager.tsx",
+        "purpose": "Admin interface for managing active financed expenses",
+        "features": ["List view", "Progress indicators", "Quick payment actions"],
+        "dependencies": ["FinancedExpenseItem", "FinancedExpenseModal"]
+      },
+      {
+        "name": "FinancedExpenseItem",
+        "path": "components/FinancedExpenseItem.tsx",
+        "purpose": "Individual financed expense display component",
+        "features": ["Summary card", "Progress bar", "Quick actions"],
+        "dependencies": ["Progress bar utility", "Date formatting"]
+      },
+      {
+        "name": "FinancedExpenseModal",
+        "path": "components/FinancedExpenseModal.tsx",
+        "purpose": "Dedicated modal for creating/editing financed expenses",
+        "features": ["Financing fields", "Payment schedule preview", "Bill generation options"],
+        "dependencies": ["Form validation", "API client"]
+      }
+    ],
+    "modifiedComponents": [
+      {
+        "name": "BillModal",
+        "path": "components/BillModal.tsx",
+        "changes": [
+          "Add 'Financed Expense' checkbox",
+          "Conditional financing fields section",
+          "Monthly payment calculation display",
+          "Enhanced validation for financing terms"
+        ],
+        "newState": ["isFinanced", "financingTerms", "interestRate", "vendor", "description"]
+      },
+      {
+        "name": "BillManager",
+        "path": "components/BillManager.tsx",
+        "changes": [
+          "Route financed expenses to new API",
+          "Handle financed expense success/error states",
+          "Import financed expense API functions"
+        ],
+        "newDependencies": ["FinancedExpense API client"]
+      },
+      {
+        "name": "FamilyView",
+        "path": "components/FamilyView.tsx",
+        "changes": [
+          "Include financed payments in due items calculation",
+          "Show financing payments alongside bills and mortgages",
+          "Add visual indicators for financing payments"
+        ],
+        "newLogic": ["Query upcoming financed payments", "Integrate with existing due items sorting"]
+      },
+      {
+        "name": "FamilyBillRow",
+        "path": "components/FamilyBillRow.tsx",
+        "changes": [
+          "Support 'financing' type for due items",
+          "Display financing context information",
+          "Show payment progress and remaining balance"
+        ],
+        "newProps": ["type: 'financing'", "financingContext"]
+      }
+    ],
+    "routing": {
+      "newRoutes": [],
+      "modifiedRoutes": [],
+      "adminNavigation": "Add FinancedExpenseManager to admin view alongside BillManager"
+    }
+  },
+  "types": {
+    "newInterfaces": [
+      {
+        "name": "FinancedExpense",
+        "location": "types.ts",
+        "extends": "Splittable",
+        "keyFields": ["totalAmount", "financingTermsMonths", "monthlyPayment", "isActive"]
+      },
+      {
+        "name": "FinancedExpensePayment",
+        "location": "types.ts",
+        "keyFields": ["paymentNumber", "dueDate", "isPaid", "paidDate"]
+      },
+      {
+        "name": "ApiFinancedExpense",
+        "location": "utils/api.ts",
+        "purpose": "API format with amountCents fields",
+        "keyFields": ["totalAmountCents", "monthlyPaymentCents"]
+      },
+      {
+        "name": "ApiFinancedExpenseSplit",
+        "location": "utils/api.ts",
+        "keyFields": ["financedExpenseId", "memberId", "value"]
+      },
+      {
+        "name": "ApiFinancedExpensePayment",
+        "location": "utils/api.ts",
+        "keyFields": ["paymentNumber", "amountCents", "isPaid"]
+      }
+    ],
+    "modifiedInterfaces": [
+      {
+        "name": "DueItem",
+        "location": "components/FamilyBillRow.tsx",
+        "changes": ["Add 'financing' to type union", "Add optional financingContext field"]
+      }
+    ]
+  },
+  "implementation": {
+    "phases": [
+      {
+        "name": "Database Foundation",
+        "duration": "2-3 hours",
+        "tasks": [
+          "Add financed expense tables to db/init.ts",
+          "Create database migration script",
+          "Test table creation and relationships"
+        ],
+        "deliverables": ["Updated database schema", "Migration script", "Schema validation tests"],
+        "dependencies": []
+      },
+      {
+        "name": "API Implementation",
+        "duration": "4-6 hours",
+        "tasks": [
+          "Create financed expense CRUD endpoints in server.ts",
+          "Implement payment schedule generation logic",
+          "Add payment status update endpoints",
+          "Test API with client tools"
+        ],
+        "deliverables": ["REST API endpoints", "Payment calculation logic", "API documentation", "Postman collection"],
+        "dependencies": ["Database Foundation"]
+      },
+      {
+        "name": "Frontend Components",
+        "duration": "6-8 hours",
+        "tasks": [
+          "Enhance BillModal with financing fields",
+          "Create FinancedExpenseManager and related components",
+          "Update Family View to include financed payments",
+          "Add TypeScript types and API client methods"
+        ],
+        "deliverables": ["Enhanced BillModal", "New financing components", "Updated Family View", "Type definitions"],
+        "dependencies": ["API Implementation"]
+      },
+      {
+        "name": "Integration & Testing",
+        "duration": "2-4 hours",
+        "tasks": [
+          "Integrate financed expense creation into existing bill flow",
+          "Test multi-device synchronization",
+          "Validate payment completion workflows",
+          "User acceptance testing"
+        ],
+        "deliverables": ["Integrated workflows", "Test results", "Bug fixes", "User feedback"],
+        "dependencies": ["Frontend Components"]
+      },
+      {
+        "name": "Polish & Documentation",
+        "duration": "1-2 hours",
+        "tasks": [
+          "Add loading states and error handling",
+          "Update user documentation",
+          "Performance optimization if needed"
+        ],
+        "deliverables": ["Production-ready feature", "Updated documentation", "Performance benchmarks"],
+        "dependencies": ["Integration & Testing"]
+      }
+    ],
+    "totalEstimate": "15-23 hours",
+    "criticalPath": ["Database Foundation", "API Implementation", "Frontend Components"],
+    "risksAndMitigation": [
+      {
+        "risk": "Complex date calculation edge cases",
+        "mitigation": "Use existing date utilities, comprehensive test cases for month-end scenarios"
+      },
+      {
+        "risk": "Integration conflicts with existing bill system",
+        "mitigation": "Careful API design, optional bill linking, preserve existing workflows"
+      },
+      {
+        "risk": "User confusion between bills and financed expenses",
+        "mitigation": "Clear visual indicators, separate management interfaces, user education"
+      }
+    ]
+  },
+  "testing": {
+    "databaseTests": [
+      "Table creation and constraint validation",
+      "Payment schedule generation accuracy",
+      "Data integrity across related tables",
+      "Index performance for date queries"
+    ],
+    "apiTests": [
+      "CRUD operations for financed expenses",
+      "Payment schedule generation logic",
+      "Payment status update workflows",
+      "Error handling for invalid inputs"
+    ],
+    "frontendTests": [
+      "BillModal financing field behavior",
+      "Family View integration display",
+      "Payment completion workflows",
+      "Mobile responsiveness"
+    ],
+    "integrationTests": [
+      "End-to-end expense creation and payment",
+      "Multi-device synchronization",
+      "Bill system integration",
+      "Data consistency across components"
+    ]
+  },
+  "deployment": {
+    "databaseMigration": {
+      "required": true,
+      "strategy": "Add new tables without affecting existing data",
+      "rollbackPlan": "Drop new tables if issues arise",
+      "testingEnvironment": "Required before production deployment"
+    },
+    "apiDeployment": {
+      "compatibility": "Backward compatible - no breaking changes to existing endpoints",
+      "monitoring": "Add health checks for new endpoints",
+      "performanceImpact": "Minimal - new endpoints only affect financed expense features"
+    },
+    "frontendDeployment": {
+      "buildChanges": "New components and enhanced existing components",
+      "caching": "Clear browser cache may be needed for component updates",
+      "featureFlag": "Consider feature flag for gradual rollout"
+    }
+  },
+  "postLaunch": {
+    "monitoring": [
+      "New API endpoint performance and error rates",
+      "User adoption of financed expense feature",
+      "Payment completion accuracy and timing",
+      "Family View performance with additional due items"
+    ],
+    "futureEnhancements": [
+      "Interest calculation for non-zero APR financing",
+      "Payment reminders and notifications",
+      "Bulk payment operations",
+      "Reporting and analytics for financing trends",
+      "Integration with external financing providers"
+    ],
+    "userFeedback": [
+      "Ease of use for expense creation",
+      "Clarity of payment schedule display",
+      "Usefulness in family budgeting",
+      "Requested features and improvements"
+    ]
+  }
+}

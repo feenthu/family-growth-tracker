@@ -160,6 +160,48 @@ CREATE TABLE IF NOT EXISTS settings (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Financed expenses table
+CREATE TABLE IF NOT EXISTS financed_expenses (
+  id VARCHAR(255) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  title VARCHAR(255) NOT NULL,
+  description TEXT,
+  total_amount_cents INTEGER NOT NULL,
+  monthly_payment_cents INTEGER NOT NULL,
+  interest_rate_percent DECIMAL(5,2) NOT NULL,
+  financing_term_months INTEGER NOT NULL,
+  purchase_date DATE NOT NULL,
+  first_payment_date DATE NOT NULL,
+  is_active BOOLEAN DEFAULT TRUE,
+  split_mode VARCHAR(50) NOT NULL DEFAULT 'amount',
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Financed expense splits table
+CREATE TABLE IF NOT EXISTS financed_expense_splits (
+  id VARCHAR(255) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  financed_expense_id VARCHAR(255) NOT NULL REFERENCES financed_expenses(id) ON DELETE CASCADE,
+  member_id VARCHAR(255) NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+  value INTEGER NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Financed expense payments table
+CREATE TABLE IF NOT EXISTS financed_expense_payments (
+  id VARCHAR(255) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  financed_expense_id VARCHAR(255) NOT NULL REFERENCES financed_expenses(id) ON DELETE CASCADE,
+  payment_number INTEGER NOT NULL,
+  due_date DATE NOT NULL,
+  amount_cents INTEGER NOT NULL,
+  principal_cents INTEGER NOT NULL,
+  interest_cents INTEGER NOT NULL,
+  is_paid BOOLEAN DEFAULT FALSE,
+  paid_date DATE,
+  bill_id VARCHAR(255) REFERENCES bills(id) ON DELETE SET NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(financed_expense_id, payment_number)
+);
+
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_bills_due_date ON bills(due_date);
 CREATE INDEX IF NOT EXISTS idx_bills_recurring_bill_id ON bills(recurring_bill_id);
@@ -169,6 +211,16 @@ CREATE INDEX IF NOT EXISTS idx_payments_bill_id ON payments(bill_id);
 CREATE INDEX IF NOT EXISTS idx_payments_paid_date ON payments(paid_date);
 CREATE INDEX IF NOT EXISTS idx_mortgage_payments_mortgage_id ON mortgage_payments(mortgage_id);
 CREATE INDEX IF NOT EXISTS idx_mortgage_payments_paid_date ON mortgage_payments(paid_date);
+
+-- Financed expense indexes
+CREATE INDEX IF NOT EXISTS idx_financed_expenses_is_active ON financed_expenses(is_active);
+CREATE INDEX IF NOT EXISTS idx_financed_expenses_purchase_date ON financed_expenses(purchase_date);
+CREATE INDEX IF NOT EXISTS idx_financed_expense_splits_financed_expense_id ON financed_expense_splits(financed_expense_id);
+CREATE INDEX IF NOT EXISTS idx_financed_expense_splits_member_id ON financed_expense_splits(member_id);
+CREATE INDEX IF NOT EXISTS idx_financed_expense_payments_financed_expense_id ON financed_expense_payments(financed_expense_id);
+CREATE INDEX IF NOT EXISTS idx_financed_expense_payments_due_date ON financed_expense_payments(due_date);
+CREATE INDEX IF NOT EXISTS idx_financed_expense_payments_is_paid ON financed_expense_payments(is_paid);
+CREATE INDEX IF NOT EXISTS idx_financed_expense_payments_bill_id ON financed_expense_payments(bill_id);
 `
 
 export async function initializeDatabase(): Promise<void> {

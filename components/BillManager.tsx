@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Bill, Person, Payment } from '../types';
+import { Bill, Person, Payment, FinancedExpense } from '../types';
 import { BillList } from './BillList';
 import { BillModal } from './BillModal';
 import { PlusIcon } from './Icons';
@@ -14,6 +14,7 @@ interface BillManagerProps {
   onEditBill: (bill: Bill) => void;
   onDeleteBill: (billId: string) => void;
   onSaveBill: (bill: Bill) => void;
+  onSaveFinanced?: (expense: FinancedExpense) => void;
   onSavePayment: (payment: Payment) => void;
   onDeletePayment: (paymentId: string) => void;
   isModalOpen: boolean;
@@ -29,6 +30,7 @@ export const BillManager: React.FC<BillManagerProps> = ({
   onEditBill,
   onDeleteBill,
   onSaveBill,
+  onSaveFinanced,
   onSavePayment,
   onDeletePayment,
   isModalOpen,
@@ -82,6 +84,7 @@ export const BillManager: React.FC<BillManagerProps> = ({
           isOpen={isModalOpen}
           onClose={closeModal}
           onSave={onSaveBill}
+          onSaveFinanced={onSaveFinanced}
           people={people}
           existingBill={editingBill}
         />
