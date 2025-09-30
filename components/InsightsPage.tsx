@@ -43,7 +43,7 @@ const formatCurrency = (cents: number) => {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
 };
 
-const API_BASE = import.meta.env.PROD
+const API_BASE = (import.meta as any).env?.PROD
   ? 'https://family-growth-tracker-production.up.railway.app'
   : 'http://localhost:8080';
 

@@ -2157,7 +2157,7 @@ app.get('/api/analytics/spending-summary', async (req, res) => {
     let billsWhere = 'WHERE b.due_date >= $1 AND b.due_date <= $2';
     let financedWhere = 'WHERE fep.due_date >= $1 AND fep.due_date <= $2';
     let mortgageWhere = 'WHERE mp.paid_date >= $1 AND mp.paid_date <= $2';
-    const params = [startDate.toISOString().split('T')[0], endDate.toISOString().split('T')[0]];
+    const params: any[] = [startDate.toISOString().split('T')[0], endDate.toISOString().split('T')[0]];
     let paramCount = 2;
 
     // Add member filter if provided
@@ -2300,7 +2300,7 @@ app.get('/api/analytics/spending-trends', async (req, res) => {
     let billsWhere = 'WHERE b.due_date >= $1 AND b.due_date <= $2';
     let financedWhere = 'WHERE fep.due_date >= $1 AND fep.due_date <= $2';
     let mortgageWhere = 'WHERE mp.paid_date >= $1 AND mp.paid_date <= $2';
-    const params = [startDate.toISOString().split('T')[0], endDate.toISOString().split('T')[0]];
+    const params: any[] = [startDate.toISOString().split('T')[0], endDate.toISOString().split('T')[0]];
     let paramCount = 2;
 
     if (memberIds && typeof memberIds === 'string' && memberIds.length > 0) {
