@@ -2133,7 +2133,7 @@ app.get('/api/analytics/spending-summary', async (req, res) => {
     const { timeRange, memberIds, categoryIds } = req.query;
 
     // Calculate date range based on timeRange parameter
-    let startDate = new Date();
+    let startDate;
     const endDate = new Date();
 
     switch (timeRange) {
@@ -2271,7 +2271,7 @@ app.get('/api/analytics/spending-trends', async (req, res) => {
     const { timeRange, memberIds, categoryIds } = req.query;
 
     // Calculate date range
-    let startDate = new Date();
+    let startDate;
     const endDate = new Date();
     let groupByFormat = 'YYYY-MM-DD';
 
@@ -2400,7 +2400,7 @@ app.get('/api/analytics/payment-status', async (req, res) => {
   try {
     const { timeRange } = req.query;
 
-    let startDate = new Date();
+    let startDate;
     const endDate = new Date();
 
     switch (timeRange) {
@@ -2468,7 +2468,7 @@ app.get('/api/analytics/mortgage-vs-expenses', async (req, res) => {
   try {
     const { timeRange } = req.query;
 
-    let startDate = new Date();
+    let startDate;
     const endDate = new Date();
 
     switch (timeRange) {
