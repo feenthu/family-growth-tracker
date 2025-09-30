@@ -2039,6 +2039,94 @@ app.delete('/api/financed-expenses/:id', async (req, res) => {
   }
 });
 
+// Categories API
+app.get('/api/categories', async (req, res) => {
+  try {
+    const result = await query(`
+      SELECT id, name, icon, color, is_default as "isDefault",
+             created_at as "createdAt", updated_at as "updatedAt"
+      FROM expense_categories
+      ORDER BY is_default DESC, name ASC
+    `)
+    res.json(result.rows)
+  } catch (error) {
+    console.error('Categories fetch error:', error)
+    res.status(500).json({ error: 'Failed to fetch categories' })
+  }
+})
+
+app.post('/api/categories', async (req, res) => {
+  try {
+    const { name, icon, color } = req.body
+
+    // Validate required fields
+    if (!name) {
+      return res.status(400).json({ error: 'Category name is required' })
+    }
+
+    const result = await query(`
+      INSERT INTO expense_categories (name, icon, color, is_default)
+      VALUES ($1, $2, $3, false)
+      RETURNING id, name, icon, color, is_default as "isDefault",
+                created_at as "createdAt", updated_at as "updatedAt"
+    `, [name, icon || null, color || '#6B7280'])
+
+    res.json(result.rows[0])
+  } catch (error) {
+    console.error('Category creation error:', error)
+
+    // Check for unique constraint violation
+    if (error.code === '23505') {
+      return res.status(409).json({ error: 'Category with this name already exists' })
+    }
+
+    res.status(500).json({ error: 'Failed to create category' })
+  }
+})
+
+app.put('/api/categories/:id', async (req, res) => {
+  try {
+    const { name, icon, color } = req.body
+    const result = await query(`
+      UPDATE expense_categories
+      SET name = $1, icon = $2, color = $3, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $4
+      RETURNING id, name, icon, color, is_default as "isDefault",
+                created_at as "createdAt", updated_at as "updatedAt"
+    `, [name, icon, color, req.params.id])
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Category not found' })
+    }
+
+    res.json(result.rows[0])
+  } catch (error) {
+    console.error('Category update error:', error)
+
+    // Check for unique constraint violation
+    if (error.code === '23505') {
+      return res.status(409).json({ error: 'Category with this name already exists' })
+    }
+
+    res.status(500).json({ error: 'Failed to update category' })
+  }
+})
+
+app.delete('/api/categories/:id', async (req, res) => {
+  try {
+    const result = await query('DELETE FROM expense_categories WHERE id = $1 RETURNING id', [req.params.id])
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Category not found' })
+    }
+
+    res.json({ success: true })
+  } catch (error) {
+    console.error('Category deletion error:', error)
+    res.status(500).json({ error: 'Failed to delete category' })
+  }
+})
+
 // Settings API
 app.get('/api/settings', async (req, res) => {
   try {

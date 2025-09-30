@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS bills (
   recurring_bill_id VARCHAR(255),
   period VARCHAR(255),
   split_mode VARCHAR(50) NOT NULL DEFAULT 'amount',
+  category_id VARCHAR(255) REFERENCES expense_categories(id) ON DELETE SET NULL,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -183,6 +184,17 @@ CREATE TABLE IF NOT EXISTS settings (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Expense categories table
+CREATE TABLE IF NOT EXISTS expense_categories (
+  id VARCHAR(255) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  name VARCHAR(255) NOT NULL UNIQUE,
+  icon VARCHAR(100),
+  color VARCHAR(50),
+  is_default BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
 -- Financed expenses table
 CREATE TABLE IF NOT EXISTS financed_expenses (
   id VARCHAR(255) PRIMARY KEY DEFAULT gen_random_uuid()::text,
@@ -196,6 +208,7 @@ CREATE TABLE IF NOT EXISTS financed_expenses (
   first_payment_date DATE NOT NULL,
   is_active BOOLEAN DEFAULT TRUE,
   split_mode VARCHAR(50) NOT NULL DEFAULT 'amount',
+  category_id VARCHAR(255) REFERENCES expense_categories(id) ON DELETE SET NULL,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -244,6 +257,11 @@ CREATE INDEX IF NOT EXISTS idx_financed_expense_payments_financed_expense_id ON 
 CREATE INDEX IF NOT EXISTS idx_financed_expense_payments_due_date ON financed_expense_payments(due_date);
 CREATE INDEX IF NOT EXISTS idx_financed_expense_payments_is_paid ON financed_expense_payments(is_paid);
 CREATE INDEX IF NOT EXISTS idx_financed_expense_payments_bill_id ON financed_expense_payments(bill_id);
+
+-- Category indexes
+CREATE INDEX IF NOT EXISTS idx_bills_category_id ON bills(category_id);
+CREATE INDEX IF NOT EXISTS idx_financed_expenses_category_id ON financed_expenses(category_id);
+CREATE INDEX IF NOT EXISTS idx_expense_categories_name ON expense_categories(name);
 `
 
 export async function initializeDatabase(): Promise<void> {
@@ -278,7 +296,28 @@ export async function initializeDatabase(): Promise<void> {
       console.log('✅ Default members created!')
     }
 
-    console.log(`📊 Database ready! (${count} members found)`)
+    // Check if we have any categories (for default data)
+    const categoryCount = await client.query('SELECT COUNT(*) as count FROM expense_categories')
+    const catCount = parseInt(categoryCount.rows[0].count)
+
+    if (catCount === 0) {
+      console.log('📝 Creating default expense categories...')
+      await client.query(`
+        INSERT INTO expense_categories (id, name, icon, color, is_default) VALUES
+        ('cat-uncategorized', 'Uncategorized', '📦', '#6B7280', true),
+        ('cat-groceries', 'Groceries', '🛒', '#10B981', true),
+        ('cat-utilities', 'Utilities', '💡', '#F59E0B', true),
+        ('cat-transportation', 'Transportation', '🚗', '#3B82F6', true),
+        ('cat-healthcare', 'Healthcare', '🏥', '#EF4444', true),
+        ('cat-entertainment', 'Entertainment', '🎬', '#8B5CF6', true),
+        ('cat-dining', 'Dining Out', '🍽️', '#EC4899', true),
+        ('cat-shopping', 'Shopping', '🛍️', '#14B8A6', true),
+        ('cat-housing', 'Housing', '🏠', '#F97316', true)
+      `)
+      console.log('✅ Default expense categories created!')
+    }
+
+    console.log(`📊 Database ready! (${count} members, ${catCount} categories found)`)
 
   } catch (error) {
     console.error('❌ Database initialization failed')
