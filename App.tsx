@@ -18,6 +18,8 @@ import { MortgageManager } from './components/MortgageManager';
 import { FinancedExpenseManager } from './components/FinancedExpenseManager';
 import { PasswordModal } from './components/PasswordModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { SwipeablePages } from './components/SwipeablePages';
+import { InsightsPage } from './components/InsightsPage';
 
 // Create QueryClient instance
 const queryClient = new QueryClient({
@@ -464,59 +466,66 @@ const AppContent: React.FC = () => {
         {!isLoading && (
           <ErrorBoundary>
             {view === 'manage' ? (
-            <>
-              <Summary totalMonthly={totals.totalMonthly} perPersonTotals={totals.perPersonTotals} />
-              <div className="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-2 space-y-8">
-                  <BillManager
-                    bills={bills}
-                    people={people}
-                    payments={payments}
-                    onAddBill={() => openBillModal()}
-                    onEditBill={openBillModal}
-                    onDeleteBill={handleDeleteBill}
-                    onSaveBill={handleSaveBill}
-                    onSaveFinanced={handleSaveFinancedExpense}
-                    onSavePayment={handleSavePayment}
-                    onDeletePayment={handleDeletePayment}
-                    isModalOpen={isBillModalOpen}
-                    closeModal={closeBillModal}
-                    editingBill={editingBill}
-                  />
-                  <MortgageManager
-                    mortgages={mortgages}
-                    people={people}
-                    payments={mortgagePayments}
-                    onSaveMortgage={handleSaveMortgage}
-                    onDeleteMortgage={handleDeleteMortgage}
-                    onSavePayment={handleSaveMortgagePayment}
-                    onDeletePayment={handleDeleteMortgagePayment}
-                  />
-                  <RecurringBillManager
-                      recurringBills={recurringBills}
-                      people={people}
-                      onAddRecurring={() => openRecurringBillModal()}
-                      onEditRecurring={openRecurringBillModal}
-                      onDeleteRecurring={handleDeleteRecurringBill}
-                      onSaveRecurring={handleSaveRecurringBill}
-                      isModalOpen={isRecurringBillModalOpen}
-                      // FIX: Pass `closeRecurringBillModal` to the `closeModal` prop instead of the undefined `closeModal`.
-                      closeModal={closeRecurringBillModal}
-                      editingRecurringBill={editingRecurringBill}
-                  />
-                  <FinancedExpenseManager
-                    financedExpenses={financedExpenses}
-                    people={people}
-                    onSaveFinancedExpense={handleSaveFinancedExpense}
-                    onDeleteFinancedExpense={handleDeleteFinancedExpense}
-                    onUpdateFinancedExpense={handleUpdateFinancedExpense}
-                  />
-                </div>
-                <div className="lg:col-span-1">
-                  <PeopleManager people={people} onAddPerson={handleAddPerson} onDeletePerson={handleDeletePerson}/>
-                </div>
-              </div>
-            </>
+              <SwipeablePages
+                pages={[
+                  // Page 1: Admin Dashboard
+                  <>
+                    <Summary totalMonthly={totals.totalMonthly} perPersonTotals={totals.perPersonTotals} />
+                    <div className="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
+                      <div className="lg:col-span-2 space-y-8">
+                        <BillManager
+                          bills={bills}
+                          people={people}
+                          payments={payments}
+                          onAddBill={() => openBillModal()}
+                          onEditBill={openBillModal}
+                          onDeleteBill={handleDeleteBill}
+                          onSaveBill={handleSaveBill}
+                          onSaveFinanced={handleSaveFinancedExpense}
+                          onSavePayment={handleSavePayment}
+                          onDeletePayment={handleDeletePayment}
+                          isModalOpen={isBillModalOpen}
+                          closeModal={closeBillModal}
+                          editingBill={editingBill}
+                        />
+                        <MortgageManager
+                          mortgages={mortgages}
+                          people={people}
+                          payments={mortgagePayments}
+                          onSaveMortgage={handleSaveMortgage}
+                          onDeleteMortgage={handleDeleteMortgage}
+                          onSavePayment={handleSaveMortgagePayment}
+                          onDeletePayment={handleDeleteMortgagePayment}
+                        />
+                        <RecurringBillManager
+                            recurringBills={recurringBills}
+                            people={people}
+                            onAddRecurring={() => openRecurringBillModal()}
+                            onEditRecurring={openRecurringBillModal}
+                            onDeleteRecurring={handleDeleteRecurringBill}
+                            onSaveRecurring={handleSaveRecurringBill}
+                            isModalOpen={isRecurringBillModalOpen}
+                            // FIX: Pass `closeRecurringBillModal` to the `closeModal` prop instead of the undefined `closeModal`.
+                            closeModal={closeRecurringBillModal}
+                            editingRecurringBill={editingRecurringBill}
+                        />
+                        <FinancedExpenseManager
+                          financedExpenses={financedExpenses}
+                          people={people}
+                          onSaveFinancedExpense={handleSaveFinancedExpense}
+                          onDeleteFinancedExpense={handleDeleteFinancedExpense}
+                          onUpdateFinancedExpense={handleUpdateFinancedExpense}
+                        />
+                      </div>
+                      <div className="lg:col-span-1">
+                        <PeopleManager people={people} onAddPerson={handleAddPerson} onDeletePerson={handleDeletePerson}/>
+                      </div>
+                    </div>
+                  </>,
+                  // Page 2: Spending Insights
+                  <InsightsPage />
+                ]}
+              />
           ) : (
             <FamilyView
                 bills={bills}
