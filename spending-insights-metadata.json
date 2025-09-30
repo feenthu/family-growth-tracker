@@ -1,0 +1,588 @@
+{
+  "featureName": "Spending Insights & Analytics",
+  "version": "1.0.0",
+  "status": "specification-complete",
+  "priority": "high",
+  "estimatedEffort": "12-16 days",
+  "dependencies": [],
+  "
+": {
+    "overview": "Add comprehensive spending analytics page to admin section with visual insights, time-range filtering, and swipe gesture navigation",
+    "scope": {
+      "included": [
+        "Member spending breakdown visualization",
+        "Category spending breakdown with 'Uncategorized' fallback",
+        "Spending trends over time (line charts)",
+        "Bill payment status and history tracking",
+        "Mortgage vs other expenses comparison",
+        "Swipe gesture navigation (mobile-first)",
+        "Time range filters: current month, last 3 months, last 6 months, year-to-date",
+        "Member and category filtering",
+        "Responsive design for mobile, tablet, desktop"
+      ],
+      "excluded": [
+        "Category intelligence (smart categorization, pattern recognition)",
+        "Bulk expense editing",
+        "Predictive analytics",
+        "Budget vs actual comparisons",
+        "Export to CSV/PDF",
+        "Email digests"
+      ]
+    }
+  },
+  "database": {
+    "newTables": [
+      {
+        "name": "expense_categories",
+        "purpose": "Store predefined and user-defined expense categories",
+        "columns": [
+          { "name": "id", "type": "VARCHAR(255)", "constraint": "PRIMARY KEY" },
+          { "name": "name", "type": "VARCHAR(255)", "constraint": "NOT NULL UNIQUE" },
+          { "name": "icon", "type": "VARCHAR(50)" },
+          { "name": "color", "type": "VARCHAR(50)" },
+          { "name": "created_at", "type": "TIMESTAMP" },
+          { "name": "updated_at", "type": "TIMESTAMP" }
+        ],
+        "indexes": [
+          { "name": "idx_expense_categories_name", "columns": ["name"] }
+        ]
+      }
+    ],
+    "modifiedTables": [
+      {
+        "name": "bills",
+        "changes": [
+          {
+            "type": "ADD COLUMN",
+            "column": "category_id",
+            "dataType": "VARCHAR(255)",
+            "constraint": "REFERENCES expense_categories(id) ON DELETE SET NULL"
+          }
+        ],
+        "newIndexes": [
+          { "name": "idx_bills_category_id", "columns": ["category_id"] }
+        ]
+      },
+      {
+        "name": "financed_expenses",
+        "changes": [
+          {
+            "type": "ADD COLUMN",
+            "column": "category_id",
+            "dataType": "VARCHAR(255)",
+            "constraint": "REFERENCES expense_categories(id) ON DELETE SET NULL"
+          }
+        ],
+        "newIndexes": [
+          { "name": "idx_financed_expenses_category_id", "columns": ["category_id"] }
+        ]
+      }
+    ],
+    "migrations": [
+      {
+        "file": "db/migrations/001_add_expense_categories.sql",
+        "description": "Create expense_categories table and add category support to expenses",
+        "rollbackSupported": true
+      }
+    ],
+    "seedData": {
+      "categories": [
+        { "name": "Groceries", "icon": "shopping-cart", "color": "green" },
+        { "name": "Utilities", "icon": "bolt", "color": "yellow" },
+        { "name": "Transportation", "icon": "car", "color": "blue" },
+        { "name": "Entertainment", "icon": "film", "color": "purple" },
+        { "name": "Healthcare", "icon": "heart", "color": "red" },
+        { "name": "Housing", "icon": "home", "color": "teal" },
+        { "name": "Dining", "icon": "utensils", "color": "orange" },
+        { "name": "Shopping", "icon": "shopping-bag", "color": "pink" },
+        { "name": "Uncategorized", "icon": "tag", "color": "gray" }
+      ]
+    }
+  },
+  "api": {
+    "newEndpoints": [
+      {
+        "method": "GET",
+        "path": "/api/categories",
+        "description": "Fetch all expense categories",
+        "authentication": "none",
+        "rateLimit": "100 per 15 minutes",
+        "caching": "1 hour client-side",
+        "response": {
+          "type": "array",
+          "schema": "ApiCategory[]"
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/api/categories",
+        "description": "Create new custom category",
+        "authentication": "admin",
+        "rateLimit": "20 per 15 minutes",
+        "requestBody": {
+          "name": "string (required, max 50 chars)",
+          "icon": "string (optional)",
+          "color": "string (optional)"
+        },
+        "response": {
+          "type": "object",
+          "schema": "ApiCategory"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/api/analytics/spending-summary",
+        "description": "Get aggregated spending data for time range",
+        "authentication": "user",
+        "rateLimit": "100 per 15 minutes",
+        "caching": "5 minutes server-side",
+        "queryParams": {
+          "timeRange": "current-month | last-3-months | last-6-months | year-to-date (required)",
+          "memberId": "string (optional)",
+          "categoryId": "string (optional)"
+        },
+        "response": {
+          "type": "object",
+          "schema": "SpendingSummaryResponse"
+        },
+        "performance": {
+          "target": "< 2 seconds (95th percentile)",
+          "optimization": "Indexed queries, CTEs, optional caching"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/api/analytics/spending-trends",
+        "description": "Get time-series spending data",
+        "authentication": "user",
+        "rateLimit": "100 per 15 minutes",
+        "queryParams": {
+          "timeRange": "current-month | last-3-months | last-6-months | year-to-date (required)",
+          "granularity": "daily | weekly | monthly (optional, auto-selected)",
+          "memberId": "string (optional)",
+          "categoryId": "string (optional)"
+        },
+        "response": {
+          "type": "object",
+          "schema": "SpendingTrendsResponse"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/api/analytics/payment-status",
+        "description": "Get bill payment tracking statistics",
+        "authentication": "user",
+        "rateLimit": "100 per 15 minutes",
+        "queryParams": {
+          "timeRange": "current-month | last-3-months | last-6-months | year-to-date (required)"
+        },
+        "response": {
+          "type": "object",
+          "schema": "PaymentStatusResponse"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/api/analytics/mortgage-vs-expenses",
+        "description": "Compare mortgage payments to other expenses",
+        "authentication": "user",
+        "rateLimit": "100 per 15 minutes",
+        "queryParams": {
+          "timeRange": "current-month | last-3-months | last-6-months | year-to-date (required)"
+        },
+        "response": {
+          "type": "object",
+          "schema": "MortgageVsExpensesResponse"
+        }
+      }
+    ],
+    "modifiedEndpoints": [],
+    "types": {
+      "location": "utils/api.ts",
+      "newInterfaces": [
+        "ApiCategory",
+        "SpendingSummaryResponse",
+        "MemberSpendingData",
+        "CategorySpendingData",
+        "MonthlySpendingData",
+        "SpendingTrendsResponse",
+        "TrendDataPoint",
+        "PaymentStatusResponse",
+        "UpcomingPayment",
+        "OverduePayment",
+        "MortgageVsExpensesResponse"
+      ]
+    }
+  },
+  "frontend": {
+    "newComponents": [
+      {
+        "name": "InsightsPage",
+        "path": "components/insights/InsightsPage.tsx",
+        "description": "Main container for insights view with swipe support",
+        "props": ["members", "isManagerModeUnlocked"],
+        "state": ["timeRange", "selectedMemberId", "selectedCategoryId", "analyticsData"]
+      },
+      {
+        "name": "InsightsNavigation",
+        "path": "components/insights/InsightsNavigation.tsx",
+        "description": "Page indicator dots for swipe navigation",
+        "props": ["currentPage", "totalPages"]
+      },
+      {
+        "name": "SpendingSummaryCard",
+        "path": "components/insights/SpendingSummaryCard.tsx",
+        "description": "Overview card with spending totals",
+        "props": ["data"],
+        "dataSource": "spendingSummary"
+      },
+      {
+        "name": "MemberSpendingChart",
+        "path": "components/insights/MemberSpendingChart.tsx",
+        "description": "Horizontal bar chart for member spending comparison",
+        "chartLibrary": "Recharts",
+        "chartType": "BarChart",
+        "props": ["data", "isLoading", "height"]
+      },
+      {
+        "name": "CategorySpendingChart",
+        "path": "components/insights/CategorySpendingChart.tsx",
+        "description": "Pie chart for category breakdown",
+        "chartLibrary": "Recharts",
+        "chartType": "PieChart",
+        "props": ["data", "isLoading", "height"]
+      },
+      {
+        "name": "SpendingTrendChart",
+        "path": "components/insights/SpendingTrendChart.tsx",
+        "description": "Line chart with area fill for trends",
+        "chartLibrary": "Recharts",
+        "chartType": "LineChart + AreaChart",
+        "props": ["data", "granularity", "isLoading", "height"]
+      },
+      {
+        "name": "PaymentStatusCard",
+        "path": "components/insights/PaymentStatusCard.tsx",
+        "description": "Payment tracking summary with upcoming/overdue",
+        "props": ["data"]
+      },
+      {
+        "name": "MortgageComparisonCard",
+        "path": "components/insights/MortgageComparisonCard.tsx",
+        "description": "Mortgage vs other expenses visualization",
+        "props": ["data"]
+      },
+      {
+        "name": "TimeRangeSelector",
+        "path": "components/insights/TimeRangeSelector.tsx",
+        "description": "Time range filter dropdown",
+        "props": ["value", "onChange"]
+      },
+      {
+        "name": "FilterPanel",
+        "path": "components/insights/FilterPanel.tsx",
+        "description": "Member and category filter controls",
+        "props": ["members", "selectedMemberId", "selectedCategoryId", "onMemberChange", "onCategoryChange", "onReset"]
+      },
+      {
+        "name": "EmptyStateInsights",
+        "path": "components/insights/EmptyStateInsights.tsx",
+        "description": "Empty state when no data available",
+        "props": ["timeRange"]
+      }
+    ],
+    "modifiedComponents": [
+      {
+        "name": "App.tsx",
+        "changes": [
+          "Add currentAdminPage state ('main' | 'insights')",
+          "Add swipe gesture handler",
+          "Add SwipeableContainer wrapper for admin view",
+          "Add InsightsNavigation component",
+          "Integrate InsightsPage component"
+        ]
+      }
+    ],
+    "newHooks": [
+      {
+        "name": "useInsightsData",
+        "path": "hooks/useInsightsData.ts",
+        "description": "Fetch and manage analytics data for insights page",
+        "parameters": ["timeRange", "memberId?", "categoryId?"],
+        "returns": {
+          "spendingSummary": "SpendingSummaryData | null",
+          "spendingTrends": "TrendData | null",
+          "paymentStatus": "PaymentStatusData | null",
+          "mortgageComparison": "MortgageComparisonData | null",
+          "isLoading": "boolean",
+          "error": "Error | null",
+          "refetch": "() => Promise<void>"
+        }
+      }
+    ],
+    "newDependencies": [
+      {
+        "name": "recharts",
+        "version": "^2.10.0",
+        "purpose": "Chart visualization library"
+      },
+      {
+        "name": "framer-motion",
+        "version": "^10.16.0",
+        "purpose": "Animation and gesture handling"
+      }
+    ]
+  },
+  "implementation": {
+    "phases": [
+      {
+        "phase": 1,
+        "name": "Database and API Foundation",
+        "duration": "2-3 days",
+        "tasks": [
+          "Create database migration for expense_categories",
+          "Seed default categories",
+          "Add category_id columns to bills and financed_expenses",
+          "Implement GET /api/categories endpoint",
+          "Implement POST /api/categories endpoint",
+          "Write API tests"
+        ],
+        "deliverables": [
+          "db/migrations/001_add_expense_categories.sql",
+          "Updated server.ts with category endpoints",
+          "Seed script"
+        ],
+        "dependencies": []
+      },
+      {
+        "phase": 2,
+        "name": "Analytics API Endpoints",
+        "duration": "3-4 days",
+        "tasks": [
+          "Implement GET /api/analytics/spending-summary",
+          "Optimize SQL queries with indexes",
+          "Implement GET /api/analytics/spending-trends",
+          "Implement GET /api/analytics/payment-status",
+          "Implement GET /api/analytics/mortgage-vs-expenses",
+          "Add error handling",
+          "Write integration tests",
+          "Performance testing"
+        ],
+        "deliverables": [
+          "Analytics endpoints in server.ts",
+          "Query optimization docs",
+          "API test suite"
+        ],
+        "dependencies": ["Phase 1"]
+      },
+      {
+        "phase": 3,
+        "name": "Frontend Components - Charts & Data Display",
+        "duration": "3-4 days",
+        "tasks": [
+          "Install and configure Recharts",
+          "Create chart components",
+          "Create card components",
+          "Create TimeRangeSelector",
+          "Create FilterPanel",
+          "Create EmptyStateInsights",
+          "Implement useInsightsData hook",
+          "Add loading skeletons"
+        ],
+        "deliverables": [
+          "Chart components in components/insights/",
+          "Custom hook in hooks/useInsightsData.ts"
+        ],
+        "dependencies": ["Phase 2"]
+      },
+      {
+        "phase": 4,
+        "name": "Frontend Components - Page & Navigation",
+        "duration": "2-3 days",
+        "tasks": [
+          "Create InsightsPage container",
+          "Implement swipe gesture with framer-motion",
+          "Create InsightsNavigation",
+          "Integrate with App.tsx",
+          "Responsive layout optimization",
+          "Error boundaries",
+          "Accessibility features"
+        ],
+        "deliverables": [
+          "InsightsPage component",
+          "Swipe implementation",
+          "Updated App.tsx"
+        ],
+        "dependencies": ["Phase 3"]
+      },
+      {
+        "phase": 5,
+        "name": "Polish and Testing",
+        "duration": "2-3 days",
+        "tasks": [
+          "UI/UX refinements",
+          "Performance optimization",
+          "Cross-browser testing",
+          "Mobile device testing",
+          "Accessibility audit",
+          "End-to-end tests",
+          "Documentation",
+          "Bug fixes"
+        ],
+        "deliverables": [
+          "Production-ready feature",
+          "Test reports",
+          "Documentation"
+        ],
+        "dependencies": ["Phase 4"]
+      }
+    ],
+    "totalEstimate": {
+      "min": "12 days",
+      "max": "16 days",
+      "confidence": "medium"
+    }
+  },
+  "testing": {
+    "unitTests": {
+      "coverage": "> 80%",
+      "focus": [
+        "Chart component rendering",
+        "useInsightsData hook",
+        "Time range utilities",
+        "Data transformations"
+      ]
+    },
+    "integrationTests": {
+      "focus": [
+        "API endpoint responses",
+        "Filter combinations",
+        "SQL query correctness",
+        "Category operations"
+      ]
+    },
+    "e2eTests": {
+      "scenarios": [
+        "Navigate to insights page",
+        "Select different time ranges",
+        "Apply member/category filters",
+        "Swipe between pages",
+        "Handle error states",
+        "View empty state"
+      ]
+    },
+    "performanceTests": {
+      "targets": [
+        "Query performance with 10k+ expenses",
+        "Chart rendering with 100+ data points",
+        "API response < 2 seconds",
+        "Memory leak detection"
+      ]
+    }
+  },
+  "deployment": {
+    "preDeployment": [
+      "Run migrations on staging",
+      "Verify seed data",
+      "Full test suite",
+      "Performance testing",
+      "Security audit",
+      "Code review (2+ reviewers)",
+      "Update API docs"
+    ],
+    "deployment": [
+      "Run migrations on production",
+      "Deploy backend first",
+      "Verify API endpoints",
+      "Deploy frontend",
+      "Monitor error logs (1 hour)",
+      "Monitor response times"
+    ],
+    "postDeployment": [
+      "Smoke tests in production",
+      "Cross-device verification",
+      "Data accuracy checks",
+      "Update user documentation",
+      "Feature announcement",
+      "Monitor adoption"
+    ]
+  },
+  "risks": {
+    "high": [
+      {
+        "risk": "Database migration failure on production",
+        "mitigation": "Thorough staging tests, low-traffic deployment window, rollback plan"
+      },
+      {
+        "risk": "Performance degradation with complex queries",
+        "mitigation": "Query optimization, indexes, caching, load testing"
+      }
+    ],
+    "medium": [
+      {
+        "risk": "Chart rendering issues on older devices",
+        "mitigation": "Progressive enhancement, table fallbacks, extensive device testing"
+      },
+      {
+        "risk": "Swipe gesture conflicts",
+        "mitigation": "Proper event handling, velocity detection, alternative navigation"
+      }
+    ],
+    "low": [
+      {
+        "risk": "User confusion with navigation",
+        "mitigation": "Clear indicators, optional tutorial, feedback loop"
+      }
+    ]
+  },
+  "successMetrics": {
+    "technical": {
+      "apiResponseTime": "< 2 seconds (95th percentile)",
+      "pageLoadTime": "< 3 seconds on 4G",
+      "criticalBugs": "0 in first week",
+      "testCoverage": "> 80%"
+    },
+    "user": {
+      "adoption": "70% of admin users in first week",
+      "engagement": "> 2 minutes average time",
+      "bounceRate": "< 5%",
+      "feedback": "Positive in surveys"
+    }
+  },
+  "futureEnhancements": {
+    "nextPR": [
+      {
+        "name": "Category Intelligence",
+        "description": "Smart categorization, pattern recognition, auto-suggestions",
+        "estimatedEffort": "2-3 weeks"
+      },
+      {
+        "name": "Bulk Expense Editing",
+        "description": "Dedicated view for categorizing historical expenses",
+        "estimatedEffort": "1 week"
+      }
+    ],
+    "backlog": [
+      "Predictive spending forecasts",
+      "Budget vs actual comparisons",
+      "Savings goal tracking",
+      "Anomaly detection",
+      "CSV/PDF export",
+      "Email digests"
+    ]
+  },
+  "documentation": {
+    "files": [
+      {
+        "name": "SPENDING_INSIGHTS_SPEC.md",
+        "purpose": "Comprehensive technical specification",
+        "location": "C:\\Users\\tysha\\Documents\\Work\\family-growth-tracker\\SPENDING_INSIGHTS_SPEC.md"
+      },
+      {
+        "name": "spending-insights-metadata.json",
+        "purpose": "Structured metadata for programmatic access",
+        "location": "C:\\Users\\tysha\\Documents\\Work\\family-growth-tracker\\spending-insights-metadata.json"
+      }
+    ]
+  }
+}
