@@ -2127,6 +2127,395 @@ app.delete('/api/categories/:id', async (req, res) => {
   }
 })
 
+// Analytics API
+app.get('/api/analytics/spending-summary', async (req, res) => {
+  try {
+    const { timeRange, memberIds, categoryIds } = req.query;
+
+    // Calculate date range based on timeRange parameter
+    let startDate = new Date();
+    const endDate = new Date();
+
+    switch (timeRange) {
+      case 'current-month':
+        startDate = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+        break;
+      case '3-months':
+        startDate = new Date(endDate.getFullYear(), endDate.getMonth() - 3, 1);
+        break;
+      case '6-months':
+        startDate = new Date(endDate.getFullYear(), endDate.getMonth() - 6, 1);
+        break;
+      case 'ytd':
+        startDate = new Date(endDate.getFullYear(), 0, 1);
+        break;
+      default:
+        startDate = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+    }
+
+    // Build WHERE clauses for filters
+    let billsWhere = 'WHERE b.due_date >= $1 AND b.due_date <= $2';
+    let financedWhere = 'WHERE fep.due_date >= $1 AND fep.due_date <= $2';
+    let mortgageWhere = 'WHERE mp.paid_date >= $1 AND mp.paid_date <= $2';
+    const params = [startDate.toISOString().split('T')[0], endDate.toISOString().split('T')[0]];
+    let paramCount = 2;
+
+    // Add member filter if provided
+    if (memberIds && typeof memberIds === 'string' && memberIds.length > 0) {
+      const memberIdArray = memberIds.split(',');
+      paramCount++;
+      billsWhere += ` AND bs.member_id = ANY($${paramCount})`;
+      financedWhere += ` AND fes.member_id = ANY($${paramCount})`;
+      mortgageWhere += ` AND ms.member_id = ANY($${paramCount})`;
+      params.push(memberIdArray);
+    }
+
+    // Add category filter if provided
+    if (categoryIds && typeof categoryIds === 'string' && categoryIds.length > 0) {
+      const categoryIdArray = categoryIds.split(',');
+      paramCount++;
+      billsWhere += ` AND b.category_id = ANY($${paramCount})`;
+      financedWhere += ` AND fe.category_id = ANY($${paramCount})`;
+      params.push(categoryIdArray);
+    }
+
+    const result = await query(`
+      WITH bill_spending AS (
+        SELECT
+          m.id as member_id,
+          m.name as member_name,
+          COALESCE(ec.id, 'cat-uncategorized') as category_id,
+          COALESCE(ec.name, 'Uncategorized') as category_name,
+          SUM(CASE
+            WHEN b.split_mode = 'amount' THEN bs.value
+            WHEN b.split_mode = 'percent' THEN (b.amount_cents * bs.value / 100)
+            WHEN b.split_mode = 'shares' THEN (
+              b.amount_cents / (SELECT SUM(value) FROM bill_splits WHERE bill_id = b.id) * bs.value
+            )
+          END) as total_cents
+        FROM bills b
+        JOIN bill_splits bs ON b.id = bs.bill_id
+        JOIN members m ON bs.member_id = m.id
+        LEFT JOIN expense_categories ec ON b.category_id = ec.id
+        ${billsWhere}
+        GROUP BY m.id, m.name, ec.id, ec.name
+      ),
+      financed_spending AS (
+        SELECT
+          m.id as member_id,
+          m.name as member_name,
+          COALESCE(ec.id, 'cat-uncategorized') as category_id,
+          COALESCE(ec.name, 'Uncategorized') as category_name,
+          SUM(CASE
+            WHEN fe.split_mode = 'amount' THEN fes.value
+            WHEN fe.split_mode = 'percent' THEN (fep.amount_cents * fes.value / 100)
+            WHEN fe.split_mode = 'shares' THEN (
+              fep.amount_cents / (SELECT SUM(value) FROM financed_expense_splits WHERE financed_expense_id = fe.id) * fes.value
+            )
+          END) as total_cents
+        FROM financed_expense_payments fep
+        JOIN financed_expenses fe ON fep.financed_expense_id = fe.id
+        JOIN financed_expense_splits fes ON fe.id = fes.financed_expense_id
+        JOIN members m ON fes.member_id = m.id
+        LEFT JOIN expense_categories ec ON fe.category_id = ec.id
+        ${financedWhere}
+        GROUP BY m.id, m.name, ec.id, ec.name
+      ),
+      mortgage_spending AS (
+        SELECT
+          m.id as member_id,
+          m.name as member_name,
+          'cat-housing' as category_id,
+          'Housing' as category_name,
+          SUM(CASE
+            WHEN mort.split_mode = 'amount' THEN ms.value
+            WHEN mort.split_mode = 'percent' THEN (mp.amount_cents * ms.value / 100)
+            WHEN mort.split_mode = 'shares' THEN (
+              mp.amount_cents / (SELECT SUM(value) FROM mortgage_splits WHERE mortgage_id = mort.id) * ms.value
+            )
+          END) as total_cents
+        FROM mortgage_payments mp
+        JOIN mortgages mort ON mp.mortgage_id = mort.id
+        JOIN mortgage_splits ms ON mort.id = ms.mortgage_id
+        JOIN members m ON ms.member_id = m.id
+        ${mortgageWhere}
+        GROUP BY m.id, m.name
+      ),
+      combined AS (
+        SELECT * FROM bill_spending
+        UNION ALL
+        SELECT * FROM financed_spending
+        UNION ALL
+        SELECT * FROM mortgage_spending
+      )
+      SELECT
+        member_id as "memberId",
+        member_name as "memberName",
+        category_id as "categoryId",
+        category_name as "categoryName",
+        SUM(total_cents) as "totalCents"
+      FROM combined
+      GROUP BY member_id, member_name, category_id, category_name
+      ORDER BY member_name, category_name
+    `, params);
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Spending summary fetch error:', error);
+    res.status(500).json({ error: 'Failed to fetch spending summary' });
+  }
+});
+
+app.get('/api/analytics/spending-trends', async (req, res) => {
+  try {
+    const { timeRange, memberIds, categoryIds } = req.query;
+
+    // Calculate date range
+    let startDate = new Date();
+    const endDate = new Date();
+    let groupByFormat = 'YYYY-MM-DD';
+
+    switch (timeRange) {
+      case 'current-month':
+        startDate = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+        groupByFormat = 'YYYY-MM-DD';
+        break;
+      case '3-months':
+        startDate = new Date(endDate.getFullYear(), endDate.getMonth() - 3, 1);
+        groupByFormat = 'YYYY-WW';
+        break;
+      case '6-months':
+        startDate = new Date(endDate.getFullYear(), endDate.getMonth() - 6, 1);
+        groupByFormat = 'YYYY-WW';
+        break;
+      case 'ytd':
+        startDate = new Date(endDate.getFullYear(), 0, 1);
+        groupByFormat = 'YYYY-MM';
+        break;
+      default:
+        startDate = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+    }
+
+    // Build WHERE clauses
+    let billsWhere = 'WHERE b.due_date >= $1 AND b.due_date <= $2';
+    let financedWhere = 'WHERE fep.due_date >= $1 AND fep.due_date <= $2';
+    let mortgageWhere = 'WHERE mp.paid_date >= $1 AND mp.paid_date <= $2';
+    const params = [startDate.toISOString().split('T')[0], endDate.toISOString().split('T')[0]];
+    let paramCount = 2;
+
+    if (memberIds && typeof memberIds === 'string' && memberIds.length > 0) {
+      const memberIdArray = memberIds.split(',');
+      paramCount++;
+      billsWhere += ` AND bs.member_id = ANY($${paramCount})`;
+      financedWhere += ` AND fes.member_id = ANY($${paramCount})`;
+      mortgageWhere += ` AND ms.member_id = ANY($${paramCount})`;
+      params.push(memberIdArray);
+    }
+
+    if (categoryIds && typeof categoryIds === 'string' && categoryIds.length > 0) {
+      const categoryIdArray = categoryIds.split(',');
+      paramCount++;
+      billsWhere += ` AND b.category_id = ANY($${paramCount})`;
+      financedWhere += ` AND fe.category_id = ANY($${paramCount})`;
+      params.push(categoryIdArray);
+    }
+
+    const result = await query(`
+      WITH bill_trends AS (
+        SELECT
+          TO_CHAR(b.due_date, '${groupByFormat}') as period,
+          b.due_date as date,
+          SUM(CASE
+            WHEN b.split_mode = 'amount' THEN bs.value
+            WHEN b.split_mode = 'percent' THEN (b.amount_cents * bs.value / 100)
+            WHEN b.split_mode = 'shares' THEN (
+              b.amount_cents / (SELECT SUM(value) FROM bill_splits WHERE bill_id = b.id) * bs.value
+            )
+          END) as total_cents
+        FROM bills b
+        JOIN bill_splits bs ON b.id = bs.bill_id
+        LEFT JOIN expense_categories ec ON b.category_id = ec.id
+        ${billsWhere}
+        GROUP BY period, b.due_date
+      ),
+      financed_trends AS (
+        SELECT
+          TO_CHAR(fep.due_date, '${groupByFormat}') as period,
+          fep.due_date as date,
+          SUM(CASE
+            WHEN fe.split_mode = 'amount' THEN fes.value
+            WHEN fe.split_mode = 'percent' THEN (fep.amount_cents * fes.value / 100)
+            WHEN fe.split_mode = 'shares' THEN (
+              fep.amount_cents / (SELECT SUM(value) FROM financed_expense_splits WHERE financed_expense_id = fe.id) * fes.value
+            )
+          END) as total_cents
+        FROM financed_expense_payments fep
+        JOIN financed_expenses fe ON fep.financed_expense_id = fe.id
+        JOIN financed_expense_splits fes ON fe.id = fes.financed_expense_id
+        LEFT JOIN expense_categories ec ON fe.category_id = ec.id
+        ${financedWhere}
+        GROUP BY period, fep.due_date
+      ),
+      mortgage_trends AS (
+        SELECT
+          TO_CHAR(mp.paid_date, '${groupByFormat}') as period,
+          mp.paid_date as date,
+          SUM(CASE
+            WHEN mort.split_mode = 'amount' THEN ms.value
+            WHEN mort.split_mode = 'percent' THEN (mp.amount_cents * ms.value / 100)
+            WHEN mort.split_mode = 'shares' THEN (
+              mp.amount_cents / (SELECT SUM(value) FROM mortgage_splits WHERE mortgage_id = mort.id) * ms.value
+            )
+          END) as total_cents
+        FROM mortgage_payments mp
+        JOIN mortgages mort ON mp.mortgage_id = mort.id
+        JOIN mortgage_splits ms ON mort.id = ms.mortgage_id
+        ${mortgageWhere}
+        GROUP BY period, mp.paid_date
+      ),
+      combined AS (
+        SELECT * FROM bill_trends
+        UNION ALL
+        SELECT * FROM financed_trends
+        UNION ALL
+        SELECT * FROM mortgage_trends
+      )
+      SELECT
+        period,
+        MIN(date) as date,
+        SUM(total_cents) as "totalCents"
+      FROM combined
+      GROUP BY period
+      ORDER BY period
+    `, params);
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Spending trends fetch error:', error);
+    res.status(500).json({ error: 'Failed to fetch spending trends' });
+  }
+});
+
+app.get('/api/analytics/payment-status', async (req, res) => {
+  try {
+    const { timeRange } = req.query;
+
+    let startDate = new Date();
+    const endDate = new Date();
+
+    switch (timeRange) {
+      case 'current-month':
+        startDate = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+        break;
+      case '3-months':
+        startDate = new Date(endDate.getFullYear(), endDate.getMonth() - 3, 1);
+        break;
+      case '6-months':
+        startDate = new Date(endDate.getFullYear(), endDate.getMonth() - 6, 1);
+        break;
+      case 'ytd':
+        startDate = new Date(endDate.getFullYear(), 0, 1);
+        break;
+      default:
+        startDate = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+    }
+
+    const result = await query(`
+      WITH bill_payments AS (
+        SELECT
+          b.id,
+          b.name,
+          b.amount_cents,
+          b.due_date,
+          COALESCE(SUM(p.amount_cents), 0) as paid_cents
+        FROM bills b
+        LEFT JOIN payments p ON b.id = p.bill_id
+        WHERE b.due_date >= $1 AND b.due_date <= $2
+        GROUP BY b.id, b.name, b.amount_cents, b.due_date
+      ),
+      financed_payments AS (
+        SELECT
+          fe.id,
+          fe.title as name,
+          fep.amount_cents,
+          fep.due_date,
+          CASE WHEN fep.is_paid THEN fep.amount_cents ELSE 0 END as paid_cents
+        FROM financed_expense_payments fep
+        JOIN financed_expenses fe ON fep.financed_expense_id = fe.id
+        WHERE fep.due_date >= $1 AND fep.due_date <= $2
+      )
+      SELECT
+        COUNT(*) FILTER (WHERE paid_cents >= amount_cents) as "paidCount",
+        COUNT(*) FILTER (WHERE paid_cents < amount_cents AND due_date < CURRENT_DATE) as "overdueCount",
+        COUNT(*) FILTER (WHERE paid_cents < amount_cents AND due_date >= CURRENT_DATE) as "upcomingCount",
+        SUM(amount_cents) as "totalAmountCents",
+        SUM(paid_cents) as "totalPaidCents"
+      FROM (
+        SELECT * FROM bill_payments
+        UNION ALL
+        SELECT * FROM financed_payments
+      ) combined
+    `, [startDate.toISOString().split('T')[0], endDate.toISOString().split('T')[0]]);
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Payment status fetch error:', error);
+    res.status(500).json({ error: 'Failed to fetch payment status' });
+  }
+});
+
+app.get('/api/analytics/mortgage-vs-expenses', async (req, res) => {
+  try {
+    const { timeRange } = req.query;
+
+    let startDate = new Date();
+    const endDate = new Date();
+
+    switch (timeRange) {
+      case 'current-month':
+        startDate = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+        break;
+      case '3-months':
+        startDate = new Date(endDate.getFullYear(), endDate.getMonth() - 3, 1);
+        break;
+      case '6-months':
+        startDate = new Date(endDate.getFullYear(), endDate.getMonth() - 6, 1);
+        break;
+      case 'ytd':
+        startDate = new Date(endDate.getFullYear(), 0, 1);
+        break;
+      default:
+        startDate = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+    }
+
+    const result = await query(`
+      WITH mortgage_total AS (
+        SELECT COALESCE(SUM(mp.amount_cents), 0) as total_cents
+        FROM mortgage_payments mp
+        WHERE mp.paid_date >= $1 AND mp.paid_date <= $2
+      ),
+      other_expenses AS (
+        SELECT COALESCE(SUM(b.amount_cents), 0) as total_cents
+        FROM bills b
+        WHERE b.due_date >= $1 AND b.due_date <= $2
+      ),
+      financed_expenses AS (
+        SELECT COALESCE(SUM(fep.amount_cents), 0) as total_cents
+        FROM financed_expense_payments fep
+        WHERE fep.due_date >= $1 AND fep.due_date <= $2
+      )
+      SELECT
+        (SELECT total_cents FROM mortgage_total) as "mortgageCents",
+        (SELECT total_cents FROM other_expenses) + (SELECT total_cents FROM financed_expenses) as "otherExpensesCents"
+    `, [startDate.toISOString().split('T')[0], endDate.toISOString().split('T')[0]]);
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Mortgage vs expenses fetch error:', error);
+    res.status(500).json({ error: 'Failed to fetch mortgage vs expenses comparison' });
+  }
+});
+
 // Settings API
 app.get('/api/settings', async (req, res) => {
   try {
