@@ -297,24 +297,35 @@ export async function initializeDatabase(): Promise<void> {
     }
 
     // Check if we have any categories (for default data)
-    const categoryCount = await client.query('SELECT COUNT(*) as count FROM expense_categories')
-    const catCount = parseInt(categoryCount.rows[0].count)
+    // First check if the table exists
+    const tableExists = await client.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_name = 'expense_categories'
+      ) as exists
+    `)
 
-    if (catCount === 0) {
-      console.log('📝 Creating default expense categories...')
-      await client.query(`
-        INSERT INTO expense_categories (id, name, icon, color, is_default) VALUES
-        ('cat-uncategorized', 'Uncategorized', '📦', '#6B7280', true),
-        ('cat-groceries', 'Groceries', '🛒', '#10B981', true),
-        ('cat-utilities', 'Utilities', '💡', '#F59E0B', true),
-        ('cat-transportation', 'Transportation', '🚗', '#3B82F6', true),
-        ('cat-healthcare', 'Healthcare', '🏥', '#EF4444', true),
-        ('cat-entertainment', 'Entertainment', '🎬', '#8B5CF6', true),
-        ('cat-dining', 'Dining Out', '🍽️', '#EC4899', true),
-        ('cat-shopping', 'Shopping', '🛍️', '#14B8A6', true),
-        ('cat-housing', 'Housing', '🏠', '#F97316', true)
-      `)
-      console.log('✅ Default expense categories created!')
+    let catCount = 0
+    if (tableExists.rows[0].exists) {
+      const categoryCount = await client.query('SELECT COUNT(*) as count FROM expense_categories')
+      catCount = parseInt(categoryCount.rows[0].count)
+
+      if (catCount === 0) {
+        console.log('📝 Creating default expense categories...')
+        await client.query(`
+          INSERT INTO expense_categories (id, name, icon, color, is_default) VALUES
+          ('cat-uncategorized', 'Uncategorized', '📦', '#6B7280', true),
+          ('cat-groceries', 'Groceries', '🛒', '#10B981', true),
+          ('cat-utilities', 'Utilities', '💡', '#F59E0B', true),
+          ('cat-transportation', 'Transportation', '🚗', '#3B82F6', true),
+          ('cat-healthcare', 'Healthcare', '🏥', '#EF4444', true),
+          ('cat-entertainment', 'Entertainment', '🎬', '#8B5CF6', true),
+          ('cat-dining', 'Dining Out', '🍽️', '#EC4899', true),
+          ('cat-shopping', 'Shopping', '🛍️', '#14B8A6', true),
+          ('cat-housing', 'Housing', '🏠', '#F97316', true)
+        `)
+        console.log('✅ Default expense categories created!')
+      }
     }
 
     console.log(`📊 Database ready! (${count} members, ${catCount} categories found)`)
