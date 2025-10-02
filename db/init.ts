@@ -60,7 +60,6 @@ CREATE TABLE IF NOT EXISTS bills (
   recurring_bill_id VARCHAR(255),
   period VARCHAR(255),
   split_mode VARCHAR(50) NOT NULL DEFAULT 'amount',
-  category_id VARCHAR(255) REFERENCES expense_categories(id) ON DELETE SET NULL,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -208,7 +207,6 @@ CREATE TABLE IF NOT EXISTS financed_expenses (
   first_payment_date DATE NOT NULL,
   is_active BOOLEAN DEFAULT TRUE,
   split_mode VARCHAR(50) NOT NULL DEFAULT 'amount',
-  category_id VARCHAR(255) REFERENCES expense_categories(id) ON DELETE SET NULL,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -280,6 +278,37 @@ export async function initializeDatabase(): Promise<void> {
     console.log('🔧 Creating database tables...')
     await client.query(createTablesSQL)
     console.log('✅ Database tables created successfully!')
+
+    // Run migrations for existing tables
+    console.log('🔄 Running database migrations...')
+
+    // Add category_id to bills table if it doesn't exist
+    await client.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'bills' AND column_name = 'category_id'
+        ) THEN
+          ALTER TABLE bills ADD COLUMN category_id VARCHAR(255) REFERENCES expense_categories(id) ON DELETE SET NULL;
+        END IF;
+      END $$;
+    `)
+
+    // Add category_id to financed_expenses table if it doesn't exist
+    await client.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'financed_expenses' AND column_name = 'category_id'
+        ) THEN
+          ALTER TABLE financed_expenses ADD COLUMN category_id VARCHAR(255) REFERENCES expense_categories(id) ON DELETE SET NULL;
+        END IF;
+      END $$;
+    `)
+
+    console.log('✅ Database migrations completed!')
 
     // Check if we have any members (for default data)
     console.log('🔍 Checking for existing data...')
