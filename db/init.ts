@@ -256,9 +256,7 @@ CREATE INDEX IF NOT EXISTS idx_financed_expense_payments_due_date ON financed_ex
 CREATE INDEX IF NOT EXISTS idx_financed_expense_payments_is_paid ON financed_expense_payments(is_paid);
 CREATE INDEX IF NOT EXISTS idx_financed_expense_payments_bill_id ON financed_expense_payments(bill_id);
 
--- Category indexes
-CREATE INDEX IF NOT EXISTS idx_bills_category_id ON bills(category_id);
-CREATE INDEX IF NOT EXISTS idx_financed_expenses_category_id ON financed_expenses(category_id);
+-- Expense category indexes (for category name lookups)
 CREATE INDEX IF NOT EXISTS idx_expense_categories_name ON expense_categories(name);
 `
 
@@ -306,6 +304,12 @@ export async function initializeDatabase(): Promise<void> {
           ALTER TABLE financed_expenses ADD COLUMN category_id VARCHAR(255) REFERENCES expense_categories(id) ON DELETE SET NULL;
         END IF;
       END $$;
+    `)
+
+    // Create indexes on category_id columns (only after columns exist)
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_bills_category_id ON bills(category_id);
+      CREATE INDEX IF NOT EXISTS idx_financed_expenses_category_id ON financed_expenses(category_id);
     `)
 
     console.log('✅ Database migrations completed!')
