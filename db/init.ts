@@ -40,6 +40,17 @@ CREATE TABLE IF NOT EXISTS members (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Expense categories table (must be created before bills and financed_expenses)
+CREATE TABLE IF NOT EXISTS expense_categories (
+  id VARCHAR(255) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  name VARCHAR(255) NOT NULL UNIQUE,
+  icon VARCHAR(100),
+  color VARCHAR(50),
+  is_default BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
 -- Bills table
 CREATE TABLE IF NOT EXISTS bills (
   id VARCHAR(255) PRIMARY KEY DEFAULT gen_random_uuid()::text,
@@ -180,17 +191,6 @@ CREATE TABLE IF NOT EXISTS mortgage_payment_breakdowns (
 CREATE TABLE IF NOT EXISTS settings (
   key VARCHAR(255) PRIMARY KEY,
   value TEXT NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW()
-);
-
--- Expense categories table
-CREATE TABLE IF NOT EXISTS expense_categories (
-  id VARCHAR(255) PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  name VARCHAR(255) NOT NULL UNIQUE,
-  icon VARCHAR(100),
-  color VARCHAR(50),
-  is_default BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );
